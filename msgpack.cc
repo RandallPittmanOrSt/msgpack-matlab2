@@ -36,10 +36,12 @@
 #define MP_PACK_STR_BODY(pk, ptr, sz) msgpack_pack_raw_body(pk, ptr, sz)
 #define MSGPACK_OBJECT_BIN 0x08
 #define MSGPACK_OBJECT_EXT 0x09
+static bool unicode_strs = false;  // RAW/STR assumed to be plain unsigned chars. Preserve char values.
 #else
 #define MP_RAWSTR(obj) obj.via.str
 #define MP_PACK_STR(pk, sz) msgpack_pack_str(pk, sz)
 #define MP_PACK_STR_BODY(pk, ptr, sz) msgpack_pack_str_body(pk, ptr, sz)
+static bool unicode_strs = true; // RAW/STR is considered to be UTF-8 decode as such in MATLAB
 #endif
 
 mxArray* mex_unpack_boolean(msgpack_object obj);
