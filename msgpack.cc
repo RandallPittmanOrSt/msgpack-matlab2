@@ -395,11 +395,18 @@ void mex_pack_logical(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
 }
 
 void mex_pack_char(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
-  mwSize str_len = mxGetNumberOfElements(prhs);
-  char * buf;
+  mwSize str_len = 0;
+  char * buf = NULL;
   if (unicode_strs) {
-    buf = mxArrayToUTF8String(prhs);
+    const mxArray * args[] = {prhs, mxCreateString("UTF-8")};
+    mxArray * bytes;
+    mexCallMATLAB(1, &bytes, 2, (mxArray **)args, "unicode2native");
+    str_len = mxGetNumberOfElements(bytes);
+    char * ptr = (char *)mxGetData(bytes);
+    buf = (char *)mxCalloc(str_len, sizeof(char));
+    memcpy(buf, ptr, str_len);
   } else {
+    str_len = mxGetNumberOfElements(prhs);
     buf = (char *)mxCalloc(str_len, sizeof(char));
     mxChar * ptr = (mxChar *)mxGetData(prhs);
     for (int i = 0; i < str_len; i++) {
