@@ -126,18 +126,23 @@ mxArray* mex_unpack_double(msgpack_object obj) {
 }
 
 mxArray* mex_unpack_str(msgpack_object obj) {
-/*
-  mxArray* ret = mxCreateNumericMatrix(1,obj.via.raw.size, mxUINT8_CLASS, mxREAL);
-  uint8_t *ptr = (uint8_t*)mxGetPr(ret); 
-  memcpy(ptr, obj.via.raw.ptr, obj.via.raw.size * sizeof(uint8_t));
-*/
-  if (MP_RAWSTR(obj).size > DEFAULT_STR_SIZE)
-    mxRealloc(unpack_raw_str, sizeof(char) * MP_RAWSTR(obj).size);
-
-  strncpy(unpack_raw_str, MP_RAWSTR(obj).ptr, sizeof(char) * MP_RAWSTR(obj).size);
-  unpack_raw_str[MP_RAWSTR(obj).size] = '\0';
-  mxArray* ret = mxCreateString((const char *)unpack_raw_str);
-
+  mxArray *ret;
+  if (unicode_strs) {
+    mxArray* data = mxCreateNumericMatrix(1, MP_RAWSTR(obj).size, mxUINT8_CLASS, mxREAL);
+    uint8_t *ptr = (uint8_t*)mxGetPr(data);
+    memcpy(ptr, MP_RAWSTR(obj).ptr, MP_RAWSTR(obj).size * sizeof(uint8_t));
+    mxArray* args[] = {data, mxCreateString("UTF-8")};
+    int result = mexCallMATLAB(1, &ret, 2, args, "native2unicode");
+  } else {
+    // Copy the bytes into a 16-bit MATLAB string. This is the only way to make
+    // a string and preserve the char byte values.
+    size_t dims[] = {1, MP_RAWSTR(obj).size};
+    ret = mxCreateCharArray(1, dims);
+    uint16_t * ptr = (uint16_t *)mxGetData(ret);
+    for (size_t i = 0; i < dims[1]; i++){
+      ptr[i] = 1, MP_RAWSTR(obj).ptr[i];
+    }
+  }
   return ret;
 }
 
@@ -390,26 +395,24 @@ void mex_pack_logical(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
 }
 
 void mex_pack_char(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
-  mwSize str_len = mxGetNumberOfElements(prhs) + 1;
-  char *buf = (char *)mxCalloc(str_len, sizeof(char));
-
-  if (mxGetString(prhs, buf, str_len) != 0)
-    mexErrMsgTxt("Could not convert to C string data");
-
+  mwSize str_len = mxGetNumberOfElements(prhs);
+  char * buf;
+  if (unicode_strs) {
+    buf = mxArrayToUTF8String(prhs);
+  } else {
+    buf = (char *)mxCalloc(str_len, sizeof(char));
+    mxChar * ptr = (mxChar *)mxGetData(prhs);
+    for (int i = 0; i < str_len; i++) {
+      if ((ptr[i] >> 8) != 0)
+        mexErrMsgIdAndTxt("msgpack:pack_char_data_loss",
+                          "Could not unpack char>255 %c (%d).", ptr[i], ptr[i]);
+      buf[i] = ptr[i];
+    }
+  }
   MP_PACK_STR(pk, str_len);
   MP_PACK_STR_BODY(pk, buf, str_len);
 
   mxFree(buf);
-
-/* uint8 input
-  int nElements = mxGetNumberOfElements(prhs);
-  uint8_t *data = (uint8_t*)mxGetPr(prhs); 
-*/
-  /* matlab char type is actually uint16 -> 2 * uint8 */
-/* uint8 input
-  msgpack_pack_raw(pk, nElements * 2);
-  msgpack_pack_raw_body(pk, data, nElements * 2);
-*/
 }
 
 void mex_pack_cell(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
