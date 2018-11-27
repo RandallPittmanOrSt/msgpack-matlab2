@@ -33,13 +33,14 @@ using std::vector;
 #include "matrix.h"
 
 static struct flags {
-  bool unicode_strs = true; // RAW/STR is considered to be UTF-8, decode as such in MATLAB
+  bool unicode_strs = true;
   bool pack_u8_bin = false;
 } flags;
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj);
 mxArray* mex_unpack_positive_integer(const msgpack_object& obj);
 mxArray* mex_unpack_negative_integer(const msgpack_object& obj);
+mxArray* mex_unpack_float(const msgpack_object& obj);
 mxArray* mex_unpack_double(const msgpack_object& obj);
 mxArray* mex_unpack_str(const msgpack_object& obj);
 mxArray* mex_unpack_nil(const msgpack_object& obj);
@@ -59,7 +60,7 @@ struct mxArrayRes {
 char *unpack_raw_str = (char *)mxMalloc(sizeof(char) * DEFAULT_STR_SIZE);
 
 void (*PackMap[17]) (msgpack_packer *pk, int nrhs, const mxArray *prhs);
-mxArray* (*unPackMap[10]) (const msgpack_object& obj);
+mxArray* (*unPackMap[11]) (const msgpack_object& obj);
 
 void mexExit(void) {
 //  mxFree((void *)unpack_raw_str);
@@ -106,6 +107,16 @@ mxArray* mex_unpack_negative_integer(const msgpack_object& obj) {
   return ret;
   */
   return mxCreateDoubleScalar((double)obj.via.i64);
+}
+
+mxArray* mex_unpack_float(const msgpack_object& obj) {
+  if (flags.unpack_narrow) {
+    mxArray* ret = mxCreateNumericMatrix(1, 2, mxSINGLE_CLASS, mxREAL);
+    float* ptr = (float *)mxGetData(ret);
+    *ptr = (float)obj.via.f64;
+    return ret;
+  } else
+    return mxCreateDoubleScalar(obj.via.f64);
 }
 
 mxArray* mex_unpack_double(const msgpack_object& obj) {
@@ -182,28 +193,34 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
     mxArray *ret = NULL;
     bool * ptrb = NULL;
     double * ptrd = NULL;
+    float* ptrf = NULL;
     int64_t * ptri = NULL;
     uint64_t * ptru = NULL;
     switch (unique_type) {
-      case 1:
+      case MSGPACK_OBJECT_BOOLEAN: // 0x01
         ret = mxCreateLogicalMatrix(1, obj.via.array.size);
         ptrb = (bool*)mxGetPr(ret);
         for (size_t i = 0; i < obj.via.array.size; i++) ptrb[i] = obj.via.array.ptr[i].via.boolean;
         break;
-      case 2:
+      case MSGPACK_OBJECT_POSITIVE_INTEGER: // 0x02
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxUINT64_CLASS, mxREAL);
         ptru = (uint64_t*)mxGetPr(ret);
         for (size_t i = 0; i < obj.via.array.size; i++) ptru[i] = obj.via.array.ptr[i].via.u64;
         break;
-      case 3:
+      case MSGPACK_OBJECT_NEGATIVE_INTEGER: // 0x03
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxINT64_CLASS, mxREAL);
         ptri = (int64_t*)mxGetPr(ret);
         for (size_t i = 0; i < obj.via.array.size; i++) ptri[i] = obj.via.array.ptr[i].via.i64;
         break;
-      case 4:
+      case MSGPACK_OBJECT_FLOAT64: // 0x04
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxDOUBLE_CLASS, mxREAL);
         ptrd = mxGetPr(ret);
         for (size_t i = 0; i < obj.via.array.size; i++) ptrd[i] = obj.via.array.ptr[i].via.f64;
+        break;
+      case MSGPACK_OBJECT_FLOAT32: // 0x0a
+        ret = mxCreateNumericMatrix(1, obj.via.array.size, mxSINGLE_CLASS, mxREAL);
+        ptrf = (float*)mxGetData(ret);
+        for (size_t i = 0; i < obj.via.array.size; i++) ptrf[i] = (float)obj.via.array.ptr[i].via.f64;
         break;
       default:
         break;
@@ -566,6 +583,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     unPackMap[MSGPACK_OBJECT_BOOLEAN] = mex_unpack_boolean;
     unPackMap[MSGPACK_OBJECT_POSITIVE_INTEGER] = mex_unpack_positive_integer;
     unPackMap[MSGPACK_OBJECT_NEGATIVE_INTEGER] = mex_unpack_negative_integer;
+    unPackMap[MSGPACK_OBJECT_FLOAT32] = mex_unpack_float;
     unPackMap[MSGPACK_OBJECT_FLOAT64] = mex_unpack_double;
     unPackMap[MSGPACK_OBJECT_STR] = mex_unpack_str;
     unPackMap[MSGPACK_OBJECT_ARRAY] = mex_unpack_array;
