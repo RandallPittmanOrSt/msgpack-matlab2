@@ -220,22 +220,37 @@ mxArray* mex_unpack_map(const msgpack_object& obj) {
 
 mxArray* mex_unpack_array(const msgpack_object& obj) {
   /* validata array element type */
-  int types = 0;
-  int unique_type = -1;
-  for (size_t i = 0; i < obj.via.array.size; i++)
-    if ((obj.via.array.ptr[i].type > 0) && (obj.via.array.ptr[i].type < 5) &&
-        (obj.via.array.ptr[i].type != unique_type)) {
-      unique_type = obj.via.array.ptr[i].type;
-      types ++;
+  int unique_numeric_type = -1;  // msgpack_object_type
+  bool one_numeric_type = true;
+  int this_type;
+  for (size_t i = 0; i < obj.via.array.size; i++) {
+    this_type = obj.via.array.ptr[i].type;
+    if (unique_numeric_type > -1) { // At least one numeric type has been found
+      if (this_type > 0x00) { // Skip NIL types
+        if (this_type != unique_numeric_type) {
+          // Different type. Can't make an array.
+          one_numeric_type = false;
+          break;
+        }
+      }
+    } else if (this_type > 0x00 && (this_type < 0x05 || this_type == 0x0a)) {
+      // Found a numeric type
+      unique_numeric_type = this_type;
+    } else {
+      // Non-numeric type. Can't make an array.
+      one_numeric_type = false;
+      break;
     }
-  if (types == 1) {
+
+  }
+  if (one_numeric_type && unique_numeric_type > -1) {
     mxArray *ret = NULL;
     bool * ptrb = NULL;
     double * ptrd = NULL;
     float* ptrf = NULL;
     int64_t * ptri = NULL;
     uint64_t * ptru = NULL;
-    switch (unique_type) {
+    switch (unique_numeric_type) {
       case MSGPACK_OBJECT_BOOLEAN: // 0x01
         ret = mxCreateLogicalMatrix(1, obj.via.array.size);
         ptrb = (bool*)mxGetData(ret);
@@ -266,7 +281,7 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
     }
     return ret;
   }
-  else {
+  else {  // multiple types or complex type (str, array, map, bin, ext)
     mxArray *ret = mxCreateCellMatrix(1, obj.via.array.size);
     for (size_t i = 0; i < obj.via.array.size; i++) {
       msgpack_object ob = obj.via.array.ptr[i];
