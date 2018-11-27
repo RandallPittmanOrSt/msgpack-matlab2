@@ -15,10 +15,6 @@ Packer:
 
     >> msg = msgpack('pack', var1, var2, ...)
 
-Add raw flag at the end of pack will enable packing all numeric type as raw (uint8)
-
-    >> msg = msgpack('pack', var1, var2, ..., 'raw')
-
 Unpacker:
 
     >> obj = msgpack('unpack', msg) 
