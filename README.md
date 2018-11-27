@@ -1,6 +1,9 @@
 MessagePack for Matlab 
 =============
-based on msgpack-c (https://github.com/msgpack/msgpack-c)
+MEX bindings for msgpack-c (https://github.com/msgpack/msgpack-c)
+
+Requires:
+* msgpack-c development library > 1.1
 
 install: 
   

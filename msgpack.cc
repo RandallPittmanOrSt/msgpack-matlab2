@@ -22,27 +22,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#define MSGPACK_USE_LEGACY_NAME_AS_FLOAT  // Allows use of old float names
 #include <msgpack.h>
 #include <vector>
 
 #include "mex.h"
 #include "matrix.h"
 
-#if (MSGPACK_VERSION_MAJOR < 1)
-#define MSGPACK_OBJECT_STR MSGPACK_OBJECT_RAW
-#define MP_RAWSTR(obj) obj.via.raw
-#define MP_PACK_STR(pk, sz) msgpack_pack_raw(pk, sz)
-#define MP_PACK_STR_BODY(pk, ptr, sz) msgpack_pack_raw_body(pk, ptr, sz)
-#define MSGPACK_OBJECT_BIN 0x08
-#define MSGPACK_OBJECT_EXT 0x09
-static bool unicode_strs = false;  // RAW/STR assumed to be plain unsigned chars. Preserve char values.
-#else
-#define MP_RAWSTR(obj) obj.via.str
-#define MP_PACK_STR(pk, sz) msgpack_pack_str(pk, sz)
-#define MP_PACK_STR_BODY(pk, ptr, sz) msgpack_pack_str_body(pk, ptr, sz)
 static bool unicode_strs = true; // RAW/STR is considered to be UTF-8 decode as such in MATLAB
-#endif
 
 mxArray* mex_unpack_boolean(msgpack_object obj);
 mxArray* mex_unpack_positive_integer(msgpack_object obj);
@@ -119,28 +105,28 @@ mxArray* mex_unpack_double(msgpack_object obj) {
 /*
   mxArray* ret = mxCreateDoubleMatrix(1,1, mxREAL);
   double *ptr = (double *)mxGetPr(ret);
-  *ptr = obj.via.dec;
+  *ptr = obj.via.f64;
   return ret;
 */
-  return mxCreateDoubleScalar(obj.via.dec);
+  return mxCreateDoubleScalar(obj.via.f64);
 }
 
 mxArray* mex_unpack_str(msgpack_object obj) {
   mxArray *ret;
   if (unicode_strs) {
-    mxArray* data = mxCreateNumericMatrix(1, MP_RAWSTR(obj).size, mxUINT8_CLASS, mxREAL);
+    mxArray* data = mxCreateNumericMatrix(1, obj.via.str.size, mxUINT8_CLASS, mxREAL);
     uint8_t *ptr = (uint8_t*)mxGetPr(data);
-    memcpy(ptr, MP_RAWSTR(obj).ptr, MP_RAWSTR(obj).size * sizeof(uint8_t));
+    memcpy(ptr, obj.via.str.ptr, obj.via.str.size * sizeof(uint8_t));
     mxArray* args[] = {data, mxCreateString("UTF-8")};
     int result = mexCallMATLAB(1, &ret, 2, args, "native2unicode");
   } else {
     // Copy the bytes into a 16-bit MATLAB string. This is the only way to make
     // a string and preserve the char byte values.
-    size_t dims[] = {1, MP_RAWSTR(obj).size};
+    size_t dims[] = {1, obj.via.str.size};
     ret = mxCreateCharArray(1, dims);
     uint16_t * ptr = (uint16_t *)mxGetData(ret);
     for (size_t i = 0; i < dims[1]; i++){
-      ptr[i] = 1, MP_RAWSTR(obj).ptr[i];
+      ptr[i] = 1, obj.via.str.ptr[i];
     }
   }
   return ret;
@@ -161,8 +147,8 @@ mxArray* mex_unpack_map(msgpack_object obj) {
     if (obj_kv.key.type == MSGPACK_OBJECT_STR) {
       /* the raw size from msgpack only counts actual characters
        * but C char array need end with \0 */
-      field_name[i] = (char*)mxCalloc(MP_RAWSTR(obj_kv.key).size + 1, sizeof(char));
-      memcpy((char*)field_name[i], MP_RAWSTR(obj_kv.key).ptr, MP_RAWSTR(obj_kv.key).size * sizeof(char));
+      field_name[i] = (char*)mxCalloc(obj_kv.key.via.str.size + 1, sizeof(char));
+      memcpy((char*)field_name[i], obj_kv.key.via.str.ptr, obj_kv.key.via.str.size * sizeof(char));
     } else {
       mexPrintf("not string key\n");
     }
@@ -215,7 +201,7 @@ mxArray* mex_unpack_array(msgpack_object obj) {
       case 4:
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxDOUBLE_CLASS, mxREAL);
         ptrd = mxGetPr(ret);
-        for (int i = 0; i < obj.via.array.size; i++) ptrd[i] = obj.via.array.ptr[i].via.dec;
+        for (int i = 0; i < obj.via.array.size; i++) ptrd[i] = obj.via.array.ptr[i].via.f64;
         break;
       default:
         break;
@@ -416,8 +402,8 @@ void mex_pack_char(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
       buf[i] = ptr[i];
     }
   }
-  MP_PACK_STR(pk, str_len);
-  MP_PACK_STR_BODY(pk, buf, str_len);
+  msgpack_pack_str(pk, str_len);
+  msgpack_pack_str_body(pk, buf, str_len);
 
   mxFree(buf);
 }
@@ -440,8 +426,8 @@ void mex_pack_struct(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
   for (int i = 0; i < nField; i++) {
     fname = mxGetFieldNameByNumber(prhs, i);
     fnameLen = strlen(fname);
-    MP_PACK_STR(pk, fnameLen);
-    MP_PACK_STR_BODY(pk, fname, fnameLen);
+    msgpack_pack_str(pk, fnameLen);
+    msgpack_pack_str_body(pk, fname, fnameLen);
     ifield = mxGetFieldNumber(prhs, fname);
     mxArray* pm = mxGetFieldByNumber(prhs, 0, ifield);
     (*PackMap[mxGetClassID(pm)])(pk, nrhs, pm);
@@ -473,8 +459,8 @@ void mex_pack_raw(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     size_t nElements = mxGetNumberOfElements(prhs[i]);
     size_t sElements = mxGetElementSize(prhs[i]);
     uint8_t *data = (uint8_t*)mxGetPr(prhs[i]);
-    MP_PACK_STR(pk, nElements * sElements);
-    MP_PACK_STR_BODY(pk, data, nElements * sElements);
+    msgpack_pack_str(pk, nElements * sElements);
+    msgpack_pack_str_body(pk, data, nElements * sElements);
   }
 
   plhs[0] = mxCreateNumericMatrix(1, buffer->size, mxUINT8_CLASS, mxREAL);
@@ -562,7 +548,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     unPackMap[MSGPACK_OBJECT_BOOLEAN] = mex_unpack_boolean;
     unPackMap[MSGPACK_OBJECT_POSITIVE_INTEGER] = mex_unpack_positive_integer;
     unPackMap[MSGPACK_OBJECT_NEGATIVE_INTEGER] = mex_unpack_negative_integer;
-    unPackMap[MSGPACK_OBJECT_DOUBLE] = mex_unpack_double;
+    unPackMap[MSGPACK_OBJECT_FLOAT64] = mex_unpack_double;
     unPackMap[MSGPACK_OBJECT_STR] = mex_unpack_str;
     unPackMap[MSGPACK_OBJECT_ARRAY] = mex_unpack_array;
     unPackMap[MSGPACK_OBJECT_MAP] = mex_unpack_map;
