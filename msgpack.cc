@@ -22,9 +22,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <msgpack.h>
+#include <sstream>
+#include <string>
 #include <vector>
+using std::string;
+using std::vector;
 
+#include <msgpack.h>
 #include "mex.h"
 #include "matrix.h"
 
@@ -115,21 +119,16 @@ mxArray* mex_unpack_double(const msgpack_object& obj) {
 
 mxArray* mex_unpack_str(const msgpack_object& obj) {
   mxArray *ret;
-  if (flags.unicode_strs) {
     mxArray* data = mxCreateNumericMatrix(1, obj.via.str.size, mxUINT8_CLASS, mxREAL);
     uint8_t *ptr = (uint8_t*)mxGetPr(data);
     memcpy(ptr, obj.via.str.ptr, obj.via.str.size * sizeof(uint8_t));
+  if (flags.unicode_strs) {
+    // Definitely UTF-8. Convert.
     mxArray* args[] = {data, mxCreateString("UTF-8")};
     mexCallMATLAB(1, &ret, 2, args, "native2unicode");
   } else {
-    // Copy the bytes into a 16-bit MATLAB string. This is the only way to make
-    // a string and preserve the char byte values.
-    size_t dims[] = {1, obj.via.str.size};
-    ret = mxCreateCharArray(1, dims);
-    uint16_t * ptr = (uint16_t *)mxGetData(ret);
-    for (size_t i = 0; i < dims[1]; i++){
-      ptr[i] = obj.via.str.ptr[i];
-    }
+    // Unknown encoding. Just unpack to uint8
+    ret = data;
   }
   return ret;
 }
@@ -541,6 +540,16 @@ void mex_unpacker_std(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
   }
 }
 
+void split_string(vector<string>& result, const string& str, char delim=' ') {
+  result.clear();
+  std::stringstream ss(str);
+  while (ss.good()) {
+    string substr;
+    getline(ss, substr, delim);
+    result.push_back(substr);
+  }
+}
+
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   static bool init = false;
@@ -581,14 +590,27 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
   if ((nrhs < 1) || (!mxIsChar(prhs[0])))
     mexErrMsgTxt("Need to input string argument");
-  char *fname = mxArrayToString(prhs[0]);
-  if (strcmp(fname, "pack") == 0)
+  string cmd_string(mxArrayToString(prhs[0]));
+  // Split cmd_string into "<cmd> [flags]"
+  vector<string> flag_vec;
+  split_string(flag_vec, cmd_string);
+  string cmd(flag_vec[0]);
+  // Process flags
+  for (vector<string>::iterator it = flag_vec.begin()+1; it != flag_vec.end(); ++it) {
+    if (*it == "+unicode_strs") flags.unicode_strs = true;
+    if (*it == "-unicode_strs") flags.unicode_strs = false;
+  }
+  // Handle command
+  if (cmd == "setflags") {
+    // flags already processed above
+    return;
+  } else if (cmd == "pack")
     mex_pack(nlhs, plhs, nrhs-1, prhs+1);
-  else if (strcmp(fname, "unpack") == 0)
+  else if (cmd == "unpack")
     mex_unpack(nlhs, plhs, nrhs-1, prhs+1);
-  else if (strcmp(fname, "unpacker") == 0)
+  else if (cmd == "unpacker")
     mex_unpacker_std(nlhs, plhs, nrhs-1, prhs+1);
-//  else if (strcmp(fname, "unpacker_std") == 0)
+//  else if (cmd == "unpacker_std")
 //    mex_unpacker_std(nlhs, plhs, nrhs-1, prhs+1);
   else
     mexErrMsgTxt("Unknown function argument");
