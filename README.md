@@ -75,16 +75,3 @@ prefixed with `+` to set or `-` to unset:
   * **Set** - When unpacking a map, always unpack as a 2xN cell matrix of keys and values.
   * **Unset** - If all keys are strings, unpack a map to a struct. If not, generate a
                 warning and unpack to a cell matrix as above.
-
-## Issue
-
-Since Matlab string is two-bytes (UTF16), following approach will not return correct string size
-
-    >> msgpack('unpack', msgpack('pack', 'hello'))
-    >> h e l l o
-
-For correct string size, use
-  
-    >> msg = msgpack('pack', uint8('hello'))
-    >> char(msgpack('unpack', msg))'
-    >> hello
