@@ -31,16 +31,26 @@ return Cell containing numericArray, charArray, Cell or Struct
 
 Flags may be set that affect this and future calls of `msgpack()` as follows:
 
-    >> msgpack(cmd, [±flag[, ±flag[, ...]]])
+```matlab
+    >> msgpack('<cmd> [<flag>[ <flag>[ ...]]]', ...)
+```
 
-...where `cmd` may be simply `'setflags'` or may be one of the other commands, and where the `flag`s
-are either set (`'+flag'` or unset (`'-flag'`)) for the following flags:
+...where `<cmd>` may be simply `setflags` or one of the other commands followed
+by that command's arguments, and where each `<flag>` is one of the following,
+prefixed with `+` to set or `-` to unset:
 
-* `unicode_strs`
-  * **Set** - MessagePack strings are assumed to be UTF-8 and are unpacked to MATLAB's UTF-16, and vis-versa
+* `+unicode_strs` or `-unicode_strs`
+  * **Set** - MessagePack strings are assumed to be UTF-8 and are unpacked to MATLAB's UTF-16, 
+              and vis-versa
   * **Unset** - MessagePack strings are of unknown encoding and are unpacked as a uint8 array.
                 When packing a `char` array, just try to pack MATLAB `mxChar`s if they are 
                 smaller than `0x00ff` into the MessagePack string field.
+* `+pack_u8_bin` or `-pack_u8_bin`
+  * **Set** - MATLAB `uint8` arrays are packed into MessagePack bin messages.
+  * **Unset** - MATLAB `uint8` arrays are packed into MessagePack arrays.
+  * In both cases, non-`uint8` arrays are packed into MessagePack arrays.
+    Use MATLAB's `typecast` to convert to `uint8` to pack other types as
+    MessagePack bin messages.
 
 ## Issue
 

@@ -34,6 +34,7 @@ using std::vector;
 
 static struct flags {
   bool unicode_strs = true; // RAW/STR is considered to be UTF-8, decode as such in MATLAB
+  bool pack_u8_bin = false;
 } flags;
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj);
@@ -313,9 +314,15 @@ void mex_pack_int8(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
 void mex_pack_uint8(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
   int nElements = mxGetNumberOfElements(prhs);
   uint8_t *data = (uint8_t*)mxGetPr(prhs);
-  if (nElements > 1) msgpack_pack_array(pk, nElements);
-  for (int i = 0; i < nElements; i++) {
-    msgpack_pack_uint8(pk, data[i]);
+  if (flags.pack_u8_bin) {
+    msgpack_pack_bin(pk, nElements);
+    msgpack_pack_bin_body(pk, data, sizeof(uint8_t)*nElements);
+  } else {
+    if (nElements > 1)
+      msgpack_pack_array(pk, nElements);
+    for (int i = 0; i < nElements; i++) {
+      msgpack_pack_uint8(pk, data[i]);
+    }
   }
 }
 
@@ -597,8 +604,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   string cmd(flag_vec[0]);
   // Process flags
   for (vector<string>::iterator it = flag_vec.begin()+1; it != flag_vec.end(); ++it) {
-    if (*it == "+unicode_strs") flags.unicode_strs = true;
-    if (*it == "-unicode_strs") flags.unicode_strs = false;
+    if (*it == "+pack_u8_bin") flags.pack_u8_bin = true;
+    else if (*it == "-pack_u8_bin") flags.pack_u8_bin = false;
+    else if (*it == "+unicode_strs") flags.unicode_strs = true;
+    else if (*it == "-unicode_strs") flags.unicode_strs = false;
+    else mexErrMsgIdAndTxt("msgpack:invalid_flag", "%s is not a valid flag.", it->c_str());
   }
   // Handle command
   if (cmd == "setflags") {
