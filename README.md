@@ -1,5 +1,6 @@
 # MessagePack for Matlab 
-=============
+------------------------
+
 MEX bindings for msgpack-c (https://github.com/msgpack/msgpack-c)
 
 Requires:
