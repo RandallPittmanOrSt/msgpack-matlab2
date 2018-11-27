@@ -32,16 +32,16 @@ static struct flags {
   bool unicode_strs = true; // RAW/STR is considered to be UTF-8, decode as such in MATLAB
 } flags;
 
-mxArray* mex_unpack_boolean(msgpack_object obj);
-mxArray* mex_unpack_positive_integer(msgpack_object obj);
-mxArray* mex_unpack_negative_integer(msgpack_object obj);
-mxArray* mex_unpack_double(msgpack_object obj);
-mxArray* mex_unpack_str(msgpack_object obj);
-mxArray* mex_unpack_nil(msgpack_object obj);
-mxArray* mex_unpack_map(msgpack_object obj);
-mxArray* mex_unpack_array(msgpack_object obj);
-mxArray* mex_unpack_bin(msgpack_object obj);
-mxArray* mex_unpack_ext(msgpack_object obj);
+mxArray* mex_unpack_boolean(const msgpack_object& obj);
+mxArray* mex_unpack_positive_integer(const msgpack_object& obj);
+mxArray* mex_unpack_negative_integer(const msgpack_object& obj);
+mxArray* mex_unpack_double(const msgpack_object& obj);
+mxArray* mex_unpack_str(const msgpack_object& obj);
+mxArray* mex_unpack_nil(const msgpack_object& obj);
+mxArray* mex_unpack_map(const msgpack_object& obj);
+mxArray* mex_unpack_array(const msgpack_object& obj);
+mxArray* mex_unpack_bin(const msgpack_object& obj);
+mxArray* mex_unpack_ext(const msgpack_object& obj);
 
 typedef struct mxArrayRes mxArrayRes;
 struct mxArrayRes {
@@ -54,7 +54,7 @@ struct mxArrayRes {
 char *unpack_raw_str = (char *)mxMalloc(sizeof(char) * DEFAULT_STR_SIZE);
 
 void (*PackMap[17]) (msgpack_packer *pk, int nrhs, const mxArray *prhs);
-mxArray* (*unPackMap[10]) (msgpack_object obj);
+mxArray* (*unPackMap[10]) (const msgpack_object& obj);
 
 void mexExit(void) {
 //  mxFree((void *)unpack_raw_str);
@@ -79,11 +79,11 @@ void mxArrayRes_free(mxArrayRes * head) {
   }
 }
 
-mxArray* mex_unpack_boolean(msgpack_object obj) {
+mxArray* mex_unpack_boolean(const msgpack_object& obj) {
   return mxCreateLogicalScalar(obj.via.boolean);
 }
 
-mxArray* mex_unpack_positive_integer(msgpack_object obj) {
+mxArray* mex_unpack_positive_integer(const msgpack_object& obj) {
   /*
   mxArray *ret = mxCreateNumericMatrix(1,1, mxUINT64_CLASS, mxREAL);
   uint64_t *ptr = (uint64_t *)mxGetPr(ret);
@@ -93,7 +93,7 @@ mxArray* mex_unpack_positive_integer(msgpack_object obj) {
   return mxCreateDoubleScalar((double)obj.via.u64);
 }
 
-mxArray* mex_unpack_negative_integer(msgpack_object obj) {
+mxArray* mex_unpack_negative_integer(const msgpack_object& obj) {
   /*
   mxArray *ret = mxCreateNumericMatrix(1,1, mxINT64_CLASS, mxREAL);
   int64_t *ptr = (int64_t *)mxGetPr(ret);
@@ -103,7 +103,7 @@ mxArray* mex_unpack_negative_integer(msgpack_object obj) {
   return mxCreateDoubleScalar((double)obj.via.i64);
 }
 
-mxArray* mex_unpack_double(msgpack_object obj) {
+mxArray* mex_unpack_double(const msgpack_object& obj) {
 /*
   mxArray* ret = mxCreateDoubleMatrix(1,1, mxREAL);
   double *ptr = (double *)mxGetPr(ret);
@@ -113,7 +113,7 @@ mxArray* mex_unpack_double(msgpack_object obj) {
   return mxCreateDoubleScalar(obj.via.f64);
 }
 
-mxArray* mex_unpack_str(msgpack_object obj) {
+mxArray* mex_unpack_str(const msgpack_object& obj) {
   mxArray *ret;
   if (flags.unicode_strs) {
     mxArray* data = mxCreateNumericMatrix(1, obj.via.str.size, mxUINT8_CLASS, mxREAL);
@@ -134,14 +134,14 @@ mxArray* mex_unpack_str(msgpack_object obj) {
   return ret;
 }
 
-mxArray* mex_unpack_nil(msgpack_object obj) {
+mxArray* mex_unpack_nil(const msgpack_object& obj) {
   /*
   return mxCreateCellArray(0,0);
   */
   return mxCreateDoubleScalar(0);
 }
 
-mxArray* mex_unpack_map(msgpack_object obj) {
+mxArray* mex_unpack_map(const msgpack_object& obj) {
   uint32_t nfields = obj.via.map.size;
   char **field_name = (char **)mxCalloc(nfields, sizeof(char *));
   for (int i = 0; i < nfields; i++) {
@@ -168,7 +168,7 @@ mxArray* mex_unpack_map(msgpack_object obj) {
   return ret;
 }
 
-mxArray* mex_unpack_array(msgpack_object obj) {
+mxArray* mex_unpack_array(const msgpack_object& obj) {
   /* validata array element type */
   int types = 0;
   int unique_type = -1;
@@ -221,14 +221,14 @@ mxArray* mex_unpack_array(msgpack_object obj) {
 }
 
 #if MSGPACK_VERSION_MAJOR >= 1
-mxArray* mex_unpack_bin(msgpack_object obj){
+mxArray* mex_unpack_bin(const msgpack_object& obj){
   mxArray* ret = mxCreateNumericMatrix(1, obj.via.bin.size, mxUINT8_CLASS, mxREAL);
   uint8_t *ptr = (uint8_t*)mxGetData(ret); 
   memcpy(ptr, obj.via.bin.ptr, obj.via.bin.size * sizeof(uint8_t));
   return ret;
 }
 
-mxArray* mex_unpack_ext(msgpack_object obj){
+mxArray* mex_unpack_ext(const msgpack_object& obj){
   mxArray* ret = mxCreateCellMatrix(1, 2);
   mxArray* exttype = mxCreateDoubleScalar(obj.via.ext.type);
   mxArray* data = mxCreateNumericMatrix(1, obj.via.ext.size, mxUINT8_CLASS, mxREAL);
@@ -239,14 +239,14 @@ mxArray* mex_unpack_ext(msgpack_object obj){
   return ret;
 }
 #else
-mxArray* mex_unpack_bin(msgpack_object obj){
+mxArray* mex_unpack_bin(const msgpack_object& obj){
   mexWarnMsgIdAndTxt(
     "msgpack_matlab:unsupported_BIN_type", 
     "msgpack-matlab has been compiled with a version of msgpack-c (%s) that"
       " does not support the BIN type.", MSGPACK_VERSION);
   return mex_unpack_nil(obj);
 }
-mxArray* mex_unpack_ext(msgpack_object obj){
+mxArray* mex_unpack_ext(const msgpack_object& obj){
   mexWarnMsgIdAndTxt(
     "msgpack_matlab:unsupported_EXT_type", 
     "msgpack-matlab has been compiled with a version of msgpack-c (%s) that"
