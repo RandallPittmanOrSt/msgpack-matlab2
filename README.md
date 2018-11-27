@@ -39,18 +39,30 @@ Flags may be set that affect this and future calls of `msgpack()` as follows:
 by that command's arguments, and where each `<flag>` is one of the following,
 prefixed with `+` to set or `-` to unset:
 
-* `+unicode_strs` or `-unicode_strs`
+* `+unicode_strs` or `-unicode_strs` (default is **set**)
   * **Set** - MessagePack strings are assumed to be UTF-8 and are unpacked to MATLAB's UTF-16, 
               and vis-versa
   * **Unset** - MessagePack strings are of unknown encoding and are unpacked as a uint8 array.
                 When packing a `char` array, just try to pack MATLAB `mxChar`s if they are 
                 smaller than `0x00ff` into the MessagePack string field.
-* `+pack_u8_bin` or `-pack_u8_bin`
+* `+pack_u8_bin` or `-pack_u8_bin` (default is **unset**)
   * **Set** - MATLAB `uint8` arrays are packed into MessagePack bin messages.
   * **Unset** - MATLAB `uint8` arrays are packed into MessagePack arrays.
   * In both cases, non-`uint8` arrays are packed into MessagePack arrays.
     Use MATLAB's `typecast` to convert to `uint8` to pack other types as
     MessagePack bin messages.
+* `+unpack_narrow` or `-unpack_narrow` (default is **unset**)
+  * **Set** - When unpacking scalar numeric types, unpack to the narrowest type possible.
+    * Positive integers -> smallest possible uint
+    * Negative integers -> smallest possible int
+    * Float32 -> single
+    * Float64 -> double
+  * **Unset** - Unpack all scalar numeric types to MATLAB double type.
+  * In both cases, arrays of all the same numeric type are converted as follows:
+    * Positive integers -> uint64
+    * Negative integers -> int64
+    * Float32 -> single
+    * Float64 -> double
 
 ## Issue
 
