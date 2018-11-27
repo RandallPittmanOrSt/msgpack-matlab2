@@ -120,7 +120,7 @@ mxArray* mex_unpack_str(const msgpack_object& obj) {
     uint8_t *ptr = (uint8_t*)mxGetPr(data);
     memcpy(ptr, obj.via.str.ptr, obj.via.str.size * sizeof(uint8_t));
     mxArray* args[] = {data, mxCreateString("UTF-8")};
-    int result = mexCallMATLAB(1, &ret, 2, args, "native2unicode");
+    mexCallMATLAB(1, &ret, 2, args, "native2unicode");
   } else {
     // Copy the bytes into a 16-bit MATLAB string. This is the only way to make
     // a string and preserve the char byte values.
@@ -128,7 +128,7 @@ mxArray* mex_unpack_str(const msgpack_object& obj) {
     ret = mxCreateCharArray(1, dims);
     uint16_t * ptr = (uint16_t *)mxGetData(ret);
     for (size_t i = 0; i < dims[1]; i++){
-      ptr[i] = 1, obj.via.str.ptr[i];
+      ptr[i] = obj.via.str.ptr[i];
     }
   }
   return ret;
@@ -144,7 +144,7 @@ mxArray* mex_unpack_nil(const msgpack_object& obj) {
 mxArray* mex_unpack_map(const msgpack_object& obj) {
   uint32_t nfields = obj.via.map.size;
   char **field_name = (char **)mxCalloc(nfields, sizeof(char *));
-  for (int i = 0; i < nfields; i++) {
+  for (size_t i = 0; i < nfields; i++) {
     struct msgpack_object_kv obj_kv = obj.via.map.ptr[i];
     if (obj_kv.key.type == MSGPACK_OBJECT_STR) {
       /* the raw size from msgpack only counts actual characters
@@ -157,12 +157,12 @@ mxArray* mex_unpack_map(const msgpack_object& obj) {
   }
   mxArray *ret = mxCreateStructMatrix(1, 1, obj.via.map.size, (const char**)field_name);
   msgpack_object ob;
-  for (int i = 0; i < nfields; i++) {
+  for (size_t i = 0; i < nfields; i++) {
     int ifield = mxGetFieldNumber(ret, field_name[i]);
     ob = obj.via.map.ptr[i].val;
     mxSetFieldByNumber(ret, 0, ifield, (*unPackMap[ob.type])(ob));
   }
-  for (int i = 0; i < nfields; i++)
+  for (size_t i = 0; i < nfields; i++)
     mxFree((void *)field_name[i]);
   mxFree(field_name); 
   return ret;
@@ -172,7 +172,7 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
   /* validata array element type */
   int types = 0;
   int unique_type = -1;
-  for (int i = 0; i < obj.via.array.size; i++)
+  for (size_t i = 0; i < obj.via.array.size; i++)
     if ((obj.via.array.ptr[i].type > 0) && (obj.via.array.ptr[i].type < 5) &&
         (obj.via.array.ptr[i].type != unique_type)) {
       unique_type = obj.via.array.ptr[i].type;
@@ -188,22 +188,22 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
       case 1:
         ret = mxCreateLogicalMatrix(1, obj.via.array.size);
         ptrb = (bool*)mxGetPr(ret);
-        for (int i = 0; i < obj.via.array.size; i++) ptrb[i] = obj.via.array.ptr[i].via.boolean;
+        for (size_t i = 0; i < obj.via.array.size; i++) ptrb[i] = obj.via.array.ptr[i].via.boolean;
         break;
       case 2:
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxUINT64_CLASS, mxREAL);
         ptru = (uint64_t*)mxGetPr(ret);
-        for (int i = 0; i < obj.via.array.size; i++) ptru[i] = obj.via.array.ptr[i].via.u64;
+        for (size_t i = 0; i < obj.via.array.size; i++) ptru[i] = obj.via.array.ptr[i].via.u64;
         break;
       case 3:
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxINT64_CLASS, mxREAL);
         ptri = (int64_t*)mxGetPr(ret);
-        for (int i = 0; i < obj.via.array.size; i++) ptri[i] = obj.via.array.ptr[i].via.i64;
+        for (size_t i = 0; i < obj.via.array.size; i++) ptri[i] = obj.via.array.ptr[i].via.i64;
         break;
       case 4:
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxDOUBLE_CLASS, mxREAL);
         ptrd = mxGetPr(ret);
-        for (int i = 0; i < obj.via.array.size; i++) ptrd[i] = obj.via.array.ptr[i].via.f64;
+        for (size_t i = 0; i < obj.via.array.size; i++) ptrd[i] = obj.via.array.ptr[i].via.f64;
         break;
       default:
         break;
@@ -212,7 +212,7 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
   }
   else {
     mxArray *ret = mxCreateCellMatrix(1, obj.via.array.size);
-    for (int i = 0; i < obj.via.array.size; i++) {
+    for (size_t i = 0; i < obj.via.array.size; i++) {
       msgpack_object ob = obj.via.array.ptr[i];
       mxSetCell(ret, i, (*unPackMap[ob.type])(ob));
     }
@@ -397,7 +397,7 @@ void mex_pack_char(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
     str_len = mxGetNumberOfElements(prhs);
     buf = (char *)mxCalloc(str_len, sizeof(char));
     mxChar * ptr = (mxChar *)mxGetData(prhs);
-    for (int i = 0; i < str_len; i++) {
+    for (size_t i = 0; i < str_len; i++) {
       if ((ptr[i] >> 8) != 0)
         mexErrMsgIdAndTxt("msgpack:pack_char_data_loss",
                           "Could not unpack char>255 %c (%d).", ptr[i], ptr[i]);
@@ -535,7 +535,7 @@ void mex_unpacker_std(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
     }
     /* set cell for output */
     plhs[0] = mxCreateCellMatrix(1, npack);
-    for (int i = 0; i < cells.size(); i++)
+    for (size_t i = 0; i < cells.size(); i++)
       mxSetCell(plhs[0], i, cells[i]);
     cells.clear();
   }
