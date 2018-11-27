@@ -37,6 +37,7 @@ static struct flags {
   bool pack_u8_bin = false;
   bool unpack_map_as_cells = false;
   bool unpack_narrow = false;
+  bool unpack_ext_w_tag = false;
 } flags;
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj);
@@ -324,7 +325,6 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
   }
 }
 
-#if MSGPACK_VERSION_MAJOR >= 1
 mxArray* mex_unpack_bin(const msgpack_object& obj){
   mxArray* ret = mxCreateNumericMatrix(1, obj.via.bin.size, mxUINT8_CLASS, mxREAL);
   uint8_t *ptr = (uint8_t*)mxGetData(ret); 
@@ -333,31 +333,25 @@ mxArray* mex_unpack_bin(const msgpack_object& obj){
 }
 
 mxArray* mex_unpack_ext(const msgpack_object& obj){
-  mxArray* ret = mxCreateCellMatrix(1, 2);
+  mxArray* ret = NULL;
+  int type_cell = 0;
+  int data_cell = 1;
+  if (flags.unpack_ext_w_tag) {
+    type_cell++;
+    data_cell++;
+    ret = mxCreateCellMatrix(1, 3);
+    mxSetCell(ret, 0, mxCreateString("MSGPACK_EXT"));
+  } else {
+    ret = mxCreateCellMatrix(1, 2);
+  }
   mxArray* exttype = mxCreateDoubleScalar(obj.via.ext.type);
   mxArray* data = mxCreateNumericMatrix(1, obj.via.ext.size, mxUINT8_CLASS, mxREAL);
   uint8_t *ptr = (uint8_t*)mxGetData(data); 
   memcpy(ptr, obj.via.ext.ptr, obj.via.ext.size * sizeof(uint8_t));
-  mxSetCell(ret, 0, exttype);
-  mxSetCell(ret, 1, data);
+  mxSetCell(ret, type_cell, exttype);
+  mxSetCell(ret, data_cell, data);
   return ret;
 }
-#else
-mxArray* mex_unpack_bin(const msgpack_object& obj){
-  mexWarnMsgIdAndTxt(
-    "msgpack_matlab:unsupported_BIN_type", 
-    "msgpack-matlab has been compiled with a version of msgpack-c (%s) that"
-      " does not support the BIN type.", MSGPACK_VERSION);
-  return mex_unpack_nil(obj);
-}
-mxArray* mex_unpack_ext(const msgpack_object& obj){
-  mexWarnMsgIdAndTxt(
-    "msgpack_matlab:unsupported_EXT_type", 
-    "msgpack-matlab has been compiled with a version of msgpack-c (%s) that"
-      " does not support the EXT type.", MSGPACK_VERSION);
-  return mex_unpack_nil(obj);
-}
-#endif // #if MSGPACK_VERSION_MAJOR >= 1
 
 void mex_unpack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) 
 {
@@ -521,9 +515,28 @@ void mex_pack_char(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
 }
 
 void mex_pack_cell(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
-  int nElements = mxGetNumberOfElements(prhs);
+  size_t nElements = mxGetNumberOfElements(prhs);
+  if (nElements == 3) {
+    mxArray* ext_tag = mxGetCell(prhs, 0);
+    mxArray* ext_code = mxGetCell(prhs, 1);
+    mxArray* ext_data = mxGetCell(prhs, 2);
+    if (mxIsChar(ext_tag) && (strcmp(mxArrayToString(ext_tag), "MSGPACK_EXT") == 0) &&
+        mxIsNumeric(ext_code) && mxIsScalar(ext_code) &&
+        mxIsUint8(ext_data)) {
+      int8_t code = mxGetScalar(ext_code);
+      if (code != mxGetScalar(ext_code)) {
+        mexErrMsgIdAndTxt("msgpack:invalid_ext_code",
+                          "ext code must be integral in range [-127, 128]");
+      }
+      uint8_t* ptr = (uint8_t*)mxGetData(ext_data);
+      size_t len = mxGetNumberOfElements(ext_data);
+      msgpack_pack_ext(pk, len, code);
+      msgpack_pack_ext_body(pk, ptr, len*sizeof(uint8_t));
+      return;
+    }
+  }
   if (nElements > 1) msgpack_pack_array(pk, nElements);
-  for (int i = 0; i < nElements; i++) {
+  for (size_t i = 0; i < nElements; i++) {
     mxArray * pm = mxGetCell(prhs, i);
     (*PackMap[mxGetClassID(pm)])(pk, nrhs, pm);
   }
@@ -717,6 +730,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     else if (*it == "-unpack_map_as_cells") flags.unpack_map_as_cells = false;
     else if (*it == "+unpack_narrow") flags.unpack_narrow = true;
     else if (*it == "-unpack_narrow") flags.unpack_narrow = false;
+    else if (*it == "+unpack_ext_w_tag") flags.unpack_ext_w_tag = true;
+    else if (*it == "-unpack_ext_w_tag") flags.unpack_ext_w_tag = false;
     else mexErrMsgIdAndTxt("msgpack:invalid_flag", "%s is not a valid flag.", it->c_str());
   }
   // Handle command

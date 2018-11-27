@@ -35,6 +35,9 @@ return numericArray or charArray or LogicalArray if data are numeric otherwise r
 
 return Cell containing numericArray, charArray, Cell or Struct
 
+### Packing EXT type
+A 1x3 cell array `{'MSGPACK_EXT', <ext_code>, <data_bytes_uint8>}` will be packed as EXT type.
+
 ### Flags
 
 Flags may be set that affect this and future calls of `msgpack()` as follows:
@@ -75,3 +78,6 @@ prefixed with `+` to set or `-` to unset:
   * **Set** - When unpacking a map, always unpack as a 2xN cell matrix of keys and values.
   * **Unset** - If all keys are strings, unpack a map to a struct. If not, generate a
                 warning and unpack to a cell matrix as above.
+* `+unpack_ext_w_tag` or `-unpack_ext_w_tag` (default is **unset**)
+  * **Set** - When unpacking an ext type, unpack to 1x3 cell matrix of `{'MSGPACK_EXT', <ext_code>, <data_byytes_uint8>}`
+  * **Unset** - When unpacking an ext type, unpack to 1x2 cell matrix of `{<ext_code>, <data>}`
