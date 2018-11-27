@@ -63,6 +63,10 @@ prefixed with `+` to set or `-` to unset:
     * Negative integers -> int64
     * Float32 -> single
     * Float64 -> double
+* `+unpack_map_as_cells` or `-unpack_map_as_cells` (default is **unset**)
+  * **Set** - When unpacking a map, always unpack as a 2xN cell matrix of keys and values.
+  * **Unset** - If all keys are strings, unpack a map to a struct. If not, generate a
+                warning and unpack to a cell matrix as above.
 
 ## Issue
 

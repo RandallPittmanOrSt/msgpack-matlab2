@@ -35,6 +35,7 @@ using std::vector;
 static struct flags {
   bool unicode_strs = true;
   bool pack_u8_bin = false;
+  bool unpack_map_as_cells = false;
   bool unpack_narrow = false;
 } flags;
 
@@ -192,29 +193,62 @@ mxArray* mex_unpack_nil(const msgpack_object& obj) {
 }
 
 mxArray* mex_unpack_map(const msgpack_object& obj) {
+  mxArray *ret = NULL;
   uint32_t nfields = obj.via.map.size;
-  char **field_name = (char **)mxCalloc(nfields, sizeof(char *));
+  bool all_strs = true;
   for (size_t i = 0; i < nfields; i++) {
-    struct msgpack_object_kv obj_kv = obj.via.map.ptr[i];
-    if (obj_kv.key.type == MSGPACK_OBJECT_STR) {
-      /* the raw size from msgpack only counts actual characters
-       * but C char array need end with \0 */
-      field_name[i] = (char*)mxCalloc(obj_kv.key.via.str.size + 1, sizeof(char));
-      memcpy((char*)field_name[i], obj_kv.key.via.str.ptr, obj_kv.key.via.str.size * sizeof(char));
-    } else {
-      mexPrintf("not string key\n");
+    if (obj.via.map.ptr[i].key.type != MSGPACK_OBJECT_STR) {
+      all_strs = false;
+      if (!flags.unpack_map_as_cells)
+        mexWarnMsgIdAndTxt("msgpack:non_str_map_keys", "Map has non-str keys. Unpacking as 2xN cells");
+      break;
     }
   }
-  mxArray *ret = mxCreateStructMatrix(1, 1, obj.via.map.size, (const char**)field_name);
-  msgpack_object ob;
-  for (size_t i = 0; i < nfields; i++) {
-    int ifield = mxGetFieldNumber(ret, field_name[i]);
-    ob = obj.via.map.ptr[i].val;
-    mxSetFieldByNumber(ret, 0, ifield, (*unPackMap[ob.type])(ob));
+  if (all_strs && !flags.unpack_map_as_cells) {
+    // All str map keys. Unpack as struct
+    char **field_name = (char **)mxCalloc(nfields, sizeof(char *));
+    for (size_t i = 0; i < nfields; i++) {
+      struct msgpack_object_kv obj_kv = obj.via.map.ptr[i];
+      if (obj_kv.key.type == MSGPACK_OBJECT_STR) {
+        /* the raw size from msgpack only counts actual characters
+        * but C char array need end with \0 */
+        field_name[i] = (char*)mxCalloc(obj_kv.key.via.str.size + 1, sizeof(char));
+        memcpy((char*)field_name[i], obj_kv.key.via.str.ptr, obj_kv.key.via.str.size * sizeof(char));
+      } else {
+        mexPrintf("not string key\n");
+      }
+    }
+    ret = mxCreateStructMatrix(1, 1, obj.via.map.size, (const char**)field_name);
+    msgpack_object ob;
+    for (size_t i = 0; i < nfields; i++) {
+      int ifield = mxGetFieldNumber(ret, field_name[i]);
+      ob = obj.via.map.ptr[i].val;
+      mxSetFieldByNumber(ret, 0, ifield, (*unPackMap[ob.type])(ob));
+    }
+    for (size_t i = 0; i < nfields; i++)
+      mxFree((void *)field_name[i]);
+    mxFree(field_name);
+  } else {
+    // unpack as cells.
+    ret = mxCreateCellMatrix(2, nfields);
+    size_t key_subs[] = {0, 0};
+    size_t val_subs[] = {1, 0};
+    size_t key_i, val_i;
+    key_i = val_i = 0;
+    msgpack_object * key = NULL;
+    msgpack_object * val = NULL;
+    for (size_t i = 0; i < nfields; i++) {
+      // Get cell indices
+      key_subs[1] = i;
+      key_i = mxCalcSingleSubscript(ret, 2, key_subs);
+      val_subs[1] = i;
+      val_i = mxCalcSingleSubscript(ret, 2, val_subs);
+      key = &(obj.via.map.ptr[i].key);
+      val = &(obj.via.map.ptr[i].val);
+      mxSetCell(ret, key_i, (*unPackMap[key->type])(*key));
+      mxSetCell(ret, val_i, (*unPackMap[val->type])(*val));
+    }
   }
-  for (size_t i = 0; i < nfields; i++)
-    mxFree((void *)field_name[i]);
-  mxFree(field_name); 
   return ret;
 }
 
@@ -241,7 +275,6 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
       one_numeric_type = false;
       break;
     }
-
   }
   if (one_numeric_type && unique_numeric_type > -1) {
     mxArray *ret = NULL;
@@ -680,6 +713,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     else if (*it == "-pack_u8_bin") flags.pack_u8_bin = false;
     else if (*it == "+unicode_strs") flags.unicode_strs = true;
     else if (*it == "-unicode_strs") flags.unicode_strs = false;
+    else if (*it == "+unpack_map_as_cells") flags.unpack_map_as_cells = true;
+    else if (*it == "-unpack_map_as_cells") flags.unpack_map_as_cells = false;
     else if (*it == "+unpack_narrow") flags.unpack_narrow = true;
     else if (*it == "-unpack_narrow") flags.unpack_narrow = false;
     else mexErrMsgIdAndTxt("msgpack:invalid_flag", "%s is not a valid flag.", it->c_str());
