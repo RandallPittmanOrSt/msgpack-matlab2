@@ -28,7 +28,9 @@
 #include "mex.h"
 #include "matrix.h"
 
-static bool unicode_strs = true; // RAW/STR is considered to be UTF-8 decode as such in MATLAB
+static struct flags {
+  bool unicode_strs = true; // RAW/STR is considered to be UTF-8, decode as such in MATLAB
+} flags;
 
 mxArray* mex_unpack_boolean(msgpack_object obj);
 mxArray* mex_unpack_positive_integer(msgpack_object obj);
@@ -113,7 +115,7 @@ mxArray* mex_unpack_double(msgpack_object obj) {
 
 mxArray* mex_unpack_str(msgpack_object obj) {
   mxArray *ret;
-  if (unicode_strs) {
+  if (flags.unicode_strs) {
     mxArray* data = mxCreateNumericMatrix(1, obj.via.str.size, mxUINT8_CLASS, mxREAL);
     uint8_t *ptr = (uint8_t*)mxGetPr(data);
     memcpy(ptr, obj.via.str.ptr, obj.via.str.size * sizeof(uint8_t));
@@ -383,7 +385,7 @@ void mex_pack_logical(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
 void mex_pack_char(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
   mwSize str_len = 0;
   char * buf = NULL;
-  if (unicode_strs) {
+  if (flags.unicode_strs) {
     const mxArray * args[] = {prhs, mxCreateString("UTF-8")};
     mxArray * bytes;
     mexCallMATLAB(1, &bytes, 2, (mxArray **)args, "unicode2native");
@@ -580,14 +582,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   if ((nrhs < 1) || (!mxIsChar(prhs[0])))
     mexErrMsgTxt("Need to input string argument");
   char *fname = mxArrayToString(prhs[0]);
-  char *flag = new char[10];
-  if (strcmp(fname, "pack") == 0) {
-    if (mxIsChar(prhs[nrhs-1])) flag = mxArrayToString(prhs[nrhs-1]);
-    if (strcmp(flag, "raw") == 0)
-      mex_pack_raw(nlhs, plhs, nrhs-2, prhs+1);
-    else
-      mex_pack(nlhs, plhs, nrhs-1, prhs+1);
-  }
+  if (strcmp(fname, "pack") == 0)
+    mex_pack(nlhs, plhs, nrhs-1, prhs+1);
   else if (strcmp(fname, "unpack") == 0)
     mex_unpack(nlhs, plhs, nrhs-1, prhs+1);
   else if (strcmp(fname, "unpacker") == 0)
