@@ -6,25 +6,33 @@ Requires:
 * msgpack-c development library > 1.1
 
 install: 
-  
-    mex -O msgpack.cc -lmsgpack
+
+```bash
+mex -O msgpack.cc -lmsgpack
+```
 
 ## API
 
 ### Packer:
 
-    >> msg = msgpack('pack', var1, var2, ...)
+```matlab
+>> msg = msgpack('pack', var1, var2, ...)
+```
 
 ### Unpacker:
 
-    >> obj = msgpack('unpack', msg) 
-    
+```matlab
+>> obj = msgpack('unpack', msg) 
+```
+
 return numericArray or charArray or LogicalArray if data are numeric otherwise return Cell or Struct
   
 ### Streaming unpacker:
 
-    >> objs = msgpack('unpacker', msg)
-  
+```matlab
+>> objs = msgpack('unpacker', msg)
+```
+
 return Cell containing numericArray, charArray, Cell or Struct
 
 ### Flags
@@ -32,7 +40,7 @@ return Cell containing numericArray, charArray, Cell or Struct
 Flags may be set that affect this and future calls of `msgpack()` as follows:
 
 ```matlab
-    >> msgpack('<cmd> [<flag>[ <flag>[ ...]]]', ...)
+>> msgpack('<cmd> [<flag>[ <flag>[ ...]]]', ...)
 ```
 
 ...where `<cmd>` may be simply `setflags` or one of the other commands followed
