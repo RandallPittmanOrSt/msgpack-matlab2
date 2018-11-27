@@ -545,15 +545,15 @@ void mex_pack_cell(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
 void mex_pack_struct(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
   int nField = mxGetNumberOfFields(prhs);
   if (nField > 1) msgpack_pack_map(pk, nField);
-  const char* fname = NULL;
-  int fnameLen = 0;
+  const char* field_name = NULL;
+  int fieldname_len = 0;
   int ifield = 0;
   for (int i = 0; i < nField; i++) {
-    fname = mxGetFieldNameByNumber(prhs, i);
-    fnameLen = strlen(fname);
-    msgpack_pack_str(pk, fnameLen);
-    msgpack_pack_str_body(pk, fname, fnameLen);
-    ifield = mxGetFieldNumber(prhs, fname);
+    field_name = mxGetFieldNameByNumber(prhs, i);
+    fieldname_len = strlen(field_name);
+    msgpack_pack_str(pk, fieldname_len);
+    msgpack_pack_str_body(pk, field_name, fieldname_len);
+    ifield = mxGetFieldNumber(prhs, field_name);
     mxArray* pm = mxGetFieldByNumber(prhs, 0, ifield);
     (*PackMap[mxGetClassID(pm)])(pk, nrhs, pm);
   }
