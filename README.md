@@ -25,7 +25,8 @@ mex -O msgpack.cc -lmsgpack
 >> obj = msgpack('unpack', msg) 
 ```
 
-return numericArray or charArray or LogicalArray if data are numeric otherwise return Cell or Struct
+return numericArray or charArray or LogicalArray if data are numeric otherwise return Cell or
+ Struct
   
 ### Streaming unpacker:
 
@@ -46,16 +47,16 @@ Flags may be set that affect this and future calls of `msgpack()` as follows:
 >> msgpack('<cmd> [<flag>[ <flag>[ ...]]]', ...)
 ```
 
-...where `<cmd>` may be simply `setflags` or one of the other commands followed
-by that command's arguments, and where each `<flag>` is one of the following,
-prefixed with `+` to set or `-` to unset:
+...where `<cmd>` may be simply `setflags` or one of the other commands followed by that command's
+ arguments, and where each `<flag>` is one of the following, prefixed with `+` to set or `-` to
+ unset:
 
 * `+unicode_strs` or `-unicode_strs` (default is **set**)
   * **Set** - MessagePack strings are assumed to be UTF-8 and are unpacked to MATLAB's UTF-16, 
-              and vis-versa
+    and vis-versa
   * **Unset** - MessagePack strings are of unknown encoding and are unpacked as a uint8 array.
-                When packing a `char` array, just try to pack MATLAB `mxChar`s if they are 
-                smaller than `0x00ff` into the MessagePack string field.
+    When packing a `char` array, just try to pack MATLAB `mxChar`s if they are smaller than
+    `0x00ff` into the MessagePack string field.
 * `+pack_u8_bin` or `-pack_u8_bin` (default is **unset**)
   * **Set** - MATLAB `uint8` arrays are packed into MessagePack bin messages.
   * **Unset** - MATLAB `uint8` arrays are packed into MessagePack arrays.
@@ -77,7 +78,13 @@ prefixed with `+` to set or `-` to unset:
 * `+unpack_map_as_cells` or `-unpack_map_as_cells` (default is **unset**)
   * **Set** - When unpacking a map, always unpack as a 2xN cell matrix of keys and values.
   * **Unset** - If all keys are strings, unpack a map to a struct. If not, generate a
-                warning and unpack to a cell matrix as above.
+    warning and unpack to a cell matrix as above.
 * `+unpack_ext_w_tag` or `-unpack_ext_w_tag` (default is **unset**)
-  * **Set** - When unpacking an ext type, unpack to 1x3 cell matrix of `{'MSGPACK_EXT', <ext_code>, <data_byytes_uint8>}`
+  * **Set** - When unpacking an ext type, unpack to 1x3 cell matrix of
+    `{'MSGPACK_EXT', <ext_code>, <data_byytes_uint8>}`
   * **Unset** - When unpacking an ext type, unpack to 1x2 cell matrix of `{<ext_code>, <data>}`
+* `+pack_other_as_nil` or `-pack_other_as_nil` (default is **unset**)
+  * **Set** - If trying to pack a type for which there is no packer function, show a warning and
+    pack NIL instead.
+  * **Unset** - If trying to pack a type for which there is no packer function, throw an error.
+

@@ -38,6 +38,7 @@ static struct flags {
   bool unpack_map_as_cells = false;
   bool unpack_narrow = false;
   bool unpack_ext_w_tag = false;
+  bool pack_other_as_nil = true;
 } flags;
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj);
@@ -62,8 +63,9 @@ struct mxArrayRes {
 /* preallocate str space for unpack raw */
 char *unpack_raw_str = (char *)mxMalloc(sizeof(char) * DEFAULT_STR_SIZE);
 
-void (*PackMap[17]) (msgpack_packer *pk, int nrhs, const mxArray *prhs);
+void (*PackMap[16]) (msgpack_packer *pk, int nrhs, const mxArray *prhs);
 mxArray* (*unPackMap[11]) (const msgpack_object& obj);
+void pack_mxArray(msgpack_packer *pk, int nrhs, const mxArray* prhs);
 
 void mexExit(void) {
 //  mxFree((void *)unpack_raw_str);
@@ -161,12 +163,6 @@ mxArray* mex_unpack_float(const msgpack_object& obj) {
 }
 
 mxArray* mex_unpack_double(const msgpack_object& obj) {
-/*
-  mxArray* ret = mxCreateDoubleMatrix(1,1, mxREAL);
-  double *ptr = (double *)mxGetPr(ret);
-  *ptr = obj.via.f64;
-  return ret;
-*/
   return mxCreateDoubleScalar(obj.via.f64);
 }
 
@@ -370,16 +366,21 @@ void mex_unpack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   plhs[0] = (*unPackMap[obj.type])(obj);
 }
 
-void mex_pack_unknown(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
-  msgpack_pack_nil(pk);
-}
-
-void mex_pack_void(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
-  msgpack_pack_nil(pk);
-}
-
-void mex_pack_function(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
-  msgpack_pack_nil(pk);
+void pack_mxArray(msgpack_packer *pk, int nrhs, const mxArray* prhs) {
+  unsigned int classid = mxGetClassID(prhs);
+  if (classid > 0 && classid < 16 && classid != 5) {
+    (*PackMap[classid])(pk, nrhs, prhs);
+  } else {
+    // 0 is UNKNOWN, 5 is VOID, 16-18 are FUNCTION, OPAQUE, & OBJECT
+    const char* classname = mxGetClassName(prhs);
+    if (flags.pack_other_as_nil) {
+      mexWarnMsgIdAndTxt("msgpack:pack_other_as_nil",
+                         "Packing class id %u (%s) as nil", classid, classname);
+    } else {
+      mexErrMsgIdAndTxt("msgpack:no_packing_method",
+                        "No method for packing class id: %u, name: %s", classid, classname);
+    }
+  }
 }
 
 void mex_pack_single(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
@@ -538,7 +539,7 @@ void mex_pack_cell(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
   if (nElements > 1) msgpack_pack_array(pk, nElements);
   for (size_t i = 0; i < nElements; i++) {
     mxArray * pm = mxGetCell(prhs, i);
-    (*PackMap[mxGetClassID(pm)])(pk, nrhs, pm);
+    pack_mxArray(pk, nrhs, pm);
   }
 }
 
@@ -555,7 +556,7 @@ void mex_pack_struct(msgpack_packer *pk, int nrhs, const mxArray *prhs) {
     msgpack_pack_str_body(pk, field_name, fieldname_len);
     ifield = mxGetFieldNumber(prhs, field_name);
     mxArray* pm = mxGetFieldByNumber(prhs, 0, ifield);
-    (*PackMap[mxGetClassID(pm)])(pk, nrhs, pm);
+    pack_mxArray(pk, nrhs, pm);
   }
 }
 
@@ -565,7 +566,7 @@ void mex_pack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   msgpack_packer* pk = msgpack_packer_new(buffer, msgpack_sbuffer_write);
 
   for (int i = 0; i < nrhs; i ++)
-    (*PackMap[mxGetClassID(prhs[i])])(pk, nrhs, prhs[i]);
+      pack_mxArray(pk, nrhs, prhs[i]);
 
   plhs[0] = mxCreateNumericMatrix(1, buffer->size, mxUINT8_CLASS, mxREAL);
   memcpy((uint8_t*)mxGetData(plhs[0]), buffer->data, buffer->size * sizeof(uint8_t));
@@ -691,9 +692,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     unPackMap[MSGPACK_OBJECT_BIN] = mex_unpack_bin;
     unPackMap[MSGPACK_OBJECT_EXT] = mex_unpack_ext;
 
-    PackMap[mxUNKNOWN_CLASS] = mex_pack_unknown;
-    PackMap[mxVOID_CLASS] = mex_pack_void;
-    PackMap[mxFUNCTION_CLASS] = mex_pack_function;
+    // These pack to MessagePack types. Others raise errors or pack to nil.
     PackMap[mxCELL_CLASS] = mex_pack_cell;
     PackMap[mxSTRUCT_CLASS] = mex_pack_struct;
     PackMap[mxLOGICAL_CLASS] = mex_pack_logical;
@@ -732,6 +731,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     else if (*it == "-unpack_narrow") flags.unpack_narrow = false;
     else if (*it == "+unpack_ext_w_tag") flags.unpack_ext_w_tag = true;
     else if (*it == "-unpack_ext_w_tag") flags.unpack_ext_w_tag = false;
+    else if (*it == "+pack_other_as_nil") flags.pack_other_as_nil = true;
+    else if (*it == "-pack_other_as_nil") flags.pack_other_as_nil = false;
     else mexErrMsgIdAndTxt("msgpack:invalid_flag", "%s is not a valid flag.", it->c_str());
   }
   // Handle command
