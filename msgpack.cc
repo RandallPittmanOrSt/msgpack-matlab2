@@ -59,13 +59,30 @@ struct mxArrayRes {
   mxArrayRes * next;
 };
 
-void (*PackMap[16]) (msgpack_packer *pk, int nrhs, const mxArray *prhs);
-mxArray* (*unPackMap[11]) (const msgpack_object& obj);
+// Create pack and unpack function mappings
+typedef void (*pack_fn)(msgpack_packer* pk, int nrhs, const mxArray* prhs);
+pack_fn PackMap[16] = {NULL};
+typedef mxArray* (*unpack_fn)(const msgpack_object& obj);
+unpack_fn unPackMap[11] = {NULL};
+
+// pack and unpack wrapper functions
 void pack_mxArray(msgpack_packer *pk, int nrhs, const mxArray* prhs);
+mxArray* unpack_obj(const msgpack_object& obj);
 
 void mexExit(void) {
   fprintf(stdout, "Existing Mex Msgpack \n");
   fflush(stdout);
+}
+
+mxArray* unpack_obj(const msgpack_object& obj) {
+  mxArray* ret = NULL;
+  if (obj.type >= 0 && obj.type <= 0x0a) {
+    ret = (*unPackMap[obj.type])(obj);
+  } else {
+    mexErrMsgIdAndTxt("msgpack:unpack_bad_object_type",
+                      "Don't know how to unpack object type %d.", obj.type);
+  }
+  return ret;
 }
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj) {
@@ -195,7 +212,7 @@ mxArray* mex_unpack_map(const msgpack_object& obj) {
     for (size_t i = 0; i < nfields; i++) {
       int ifield = mxGetFieldNumber(ret, field_name[i]);
       ob = obj.via.map.ptr[i].val;
-      mxSetFieldByNumber(ret, 0, ifield, (*unPackMap[ob.type])(ob));
+      mxSetFieldByNumber(ret, 0, ifield, unpack_obj(ob));
     }
     for (size_t i = 0; i < nfields; i++)
       mxFree((void *)field_name[i]);
@@ -217,8 +234,8 @@ mxArray* mex_unpack_map(const msgpack_object& obj) {
       val_i = mxCalcSingleSubscript(ret, 2, val_subs);
       key = &(obj.via.map.ptr[i].key);
       val = &(obj.via.map.ptr[i].val);
-      mxSetCell(ret, key_i, (*unPackMap[key->type])(*key));
-      mxSetCell(ret, val_i, (*unPackMap[val->type])(*val));
+      mxSetCell(ret, key_i, unpack_obj(*key));
+      mxSetCell(ret, val_i, unpack_obj(*val));
     }
   }
   return ret;
@@ -290,7 +307,7 @@ mxArray* mex_unpack_array(const msgpack_object& obj) {
     mxArray *ret = mxCreateCellMatrix(1, obj.via.array.size);
     for (size_t i = 0; i < obj.via.array.size; i++) {
       msgpack_object ob = obj.via.array.ptr[i];
-      mxSetCell(ret, i, (*unPackMap[ob.type])(ob));
+      mxSetCell(ret, i, unpack_obj(ob));
     }
     return ret;
   }
@@ -338,7 +355,7 @@ void mex_unpack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   /* prints the deserialized object. */
   msgpack_object obj = msg.data;
 
-  plhs[0] = (*unPackMap[obj.type])(obj);
+  plhs[0] = unpack_obj(obj);
 }
 
 void pack_mxArray(msgpack_packer *pk, int nrhs, const mxArray* prhs) {
@@ -617,7 +634,7 @@ void mex_unpacker(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     for (;msgpack_unpacker_next(&pac, &msg); npack++) {
       /* prints the deserialized object. */
       msgpack_object obj = msg.data;
-      ret = mxArrayRes_new(ret, (*unPackMap[obj.type])(obj));
+      ret = mxArrayRes_new(ret, unpack_obj(obj));
     }
     /* set cell for output */
     plhs[0] = mxCreateCellMatrix(npack, 1);
@@ -648,7 +665,7 @@ void mex_unpacker_std(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
     for (;msgpack_unpacker_next(&pac, &msg); npack++) {
       /* prints the deserialized object. */
       msgpack_object obj = msg.data;
-      cells.push_back((*unPackMap[obj.type])(obj));
+      cells.push_back(unpack_obj(obj));
     }
     /* set cell for output */
     plhs[0] = mxCreateCellMatrix(1, npack);
