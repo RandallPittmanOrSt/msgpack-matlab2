@@ -59,35 +59,13 @@ struct mxArrayRes {
   mxArrayRes * next;
 };
 
-#define DEFAULT_STR_SIZE 256
-/* preallocate str space for unpack raw */
-char *unpack_raw_str = (char *)mxMalloc(sizeof(char) * DEFAULT_STR_SIZE);
-
 void (*PackMap[16]) (msgpack_packer *pk, int nrhs, const mxArray *prhs);
 mxArray* (*unPackMap[11]) (const msgpack_object& obj);
 void pack_mxArray(msgpack_packer *pk, int nrhs, const mxArray* prhs);
 
 void mexExit(void) {
-//  mxFree((void *)unpack_raw_str);
   fprintf(stdout, "Existing Mex Msgpack \n");
   fflush(stdout);
-}
-
-mxArrayRes * mxArrayRes_new(mxArrayRes * head, mxArray* res) {
-  mxArrayRes * new_res = (mxArrayRes *)mxCalloc(1, sizeof(mxArrayRes));
-  new_res->res = res;
-  new_res->next = head;
-  return new_res;
-}
-
-void mxArrayRes_free(mxArrayRes * head) {
-  mxArrayRes * cur_ptr = head;
-  mxArrayRes * ptr = head; 
-  while (cur_ptr != NULL) {
-    ptr = ptr->next;
-    mxFree(cur_ptr);
-    cur_ptr = ptr;
-  }
 }
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj) {
@@ -183,9 +161,6 @@ mxArray* mex_unpack_str(const msgpack_object& obj) {
 }
 
 mxArray* mex_unpack_nil(const msgpack_object& obj) {
-  /*
-  return mxCreateCellArray(0,0);
-  */
   return mxCreateDoubleScalar(0);
 }
 
@@ -603,6 +578,24 @@ void mex_unpacker_set_cell(mxArray *plhs, int nlhs, mxArrayRes *res) {
   mxSetCell(plhs, nlhs, res->res);
 }
 
+// mex_unpacker utility functions
+mxArrayRes * mxArrayRes_new(mxArrayRes * head, mxArray* res) {
+  mxArrayRes * new_res = (mxArrayRes *)mxCalloc(1, sizeof(mxArrayRes));
+  new_res->res = res;
+  new_res->next = head;
+  return new_res;
+}
+
+void mxArrayRes_free(mxArrayRes * head) {
+  mxArrayRes * cur_ptr = head;
+  mxArrayRes * ptr = head;
+  while (cur_ptr != NULL) {
+    ptr = ptr->next;
+    mxFree(cur_ptr);
+    cur_ptr = ptr;
+  }
+}
+
 void mex_unpacker(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   mxArrayRes * ret = NULL;
   int npack = 0;
@@ -745,12 +738,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     mex_unpack(nlhs, plhs, nrhs-1, prhs+1);
   else if (cmd == "unpacker")
     mex_unpacker_std(nlhs, plhs, nrhs-1, prhs+1);
-  else if (cmd == "help") {
-    mexPrintf("See README.md\n");
-  }
-//  else if (cmd == "unpacker_std")
-//    mex_unpacker_std(nlhs, plhs, nrhs-1, prhs+1);
+  else if (cmd == "help")
+    mexPrintf(
+      "See README.md for full details.\n"
+      "The following flags may be set (+flag) or unset (-flag) in the command string.\n"
+      "  pack_u8_bin\n"
+      "  unicode_strs\n"
+      "  unpack_map_as_cells\n"
+      "  unpack_narrow\n"
+      "  unpack_ext_w_tag\n"
+      "  pack_other_as_nil\n"
+      "\n");
   else
-    mexErrMsgTxt("Unknown function argument");
+    mexErrMsgIdAndTxt("msgpack:bad_command",
+                      "Unrecognized command %s. Try msgpack('help');", cmd.c_str());
 }
 
