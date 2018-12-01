@@ -32,14 +32,43 @@ using std::vector;
 #include "mex.h"
 #include "matrix.h"
 
-static struct flags {
+enum NilUnpack {UNPACK_NIL_ZERO, UNPACK_NIL_NAN, UNPACK_NIL_EMPTY, UNPACK_NIL_CELL};
+
+static struct mp_flags {
   bool unicode_strs = true;
   bool pack_u8_bin = false;
   bool unpack_map_as_cells = false;
   bool unpack_narrow = false;
   bool unpack_ext_w_tag = false;
   bool pack_other_as_nil = true;
+  NilUnpack unpack_nil = UNPACK_NIL_ZERO;
+  bool unpack_nil_array_skip = true;
 } flags;
+
+void print_flags() {
+  mexPrintf("%cunicode_strs\n", (flags.unicode_strs) ? '+' : '-');
+  mexPrintf("%cpack_u8_bin\n", (flags.pack_u8_bin) ? '+' : '-');
+  mexPrintf("%cunpack_map_as_cells\n", (flags.unpack_map_as_cells) ? '+' : '-');
+  mexPrintf("%cunpack_narrow\n", (flags.unpack_narrow) ? '+' : '-');
+  mexPrintf("%cunpack_ext_w_tag\n", (flags.unpack_ext_w_tag) ? '+' : '-');
+  mexPrintf("%cpack_other_as_nil\n", (flags.pack_other_as_nil) ? '+' : '-');
+  mexPrintf("%cunpack_nil_array_skip\n", (flags.unpack_nil_array_skip) ? '+' : '-');
+  mexPrintf("+unpack_nil_");
+  switch (flags.unpack_nil) {
+    case UNPACK_NIL_ZERO:
+      mexPrintf("zero\n");
+      break;
+    case UNPACK_NIL_NAN:
+      mexPrintf("NaN\n");
+      break;
+    case UNPACK_NIL_EMPTY:
+      mexPrintf("empty\n");
+      break;
+    case UNPACK_NIL_CELL:
+      mexPrintf("cell\n");
+      break;
+  }
+}
 
 mxArray* mex_unpack_boolean(const msgpack_object& obj);
 mxArray* mex_unpack_positive_integer(const msgpack_object& obj);
@@ -178,7 +207,22 @@ mxArray* mex_unpack_str(const msgpack_object& obj) {
 }
 
 mxArray* mex_unpack_nil(const msgpack_object& obj) {
-  return mxCreateDoubleScalar(0);
+  mxArray* ret = NULL;
+  switch (flags.unpack_nil) {
+    case UNPACK_NIL_ZERO:
+      ret = mxCreateDoubleScalar(0);
+      break;
+    case UNPACK_NIL_NAN:
+      ret = mxCreateDoubleScalar(mxGetNaN());
+      break;
+    case UNPACK_NIL_EMPTY:
+      ret = mxCreateDoubleMatrix(0, 0, mxREAL);
+      break;
+    case UNPACK_NIL_CELL:
+      ret = mxCreateCellArray(0, 0);
+      break;
+  }
+  return ret;
 }
 
 mxArray* mex_unpack_map(const msgpack_object& obj) {
@@ -743,11 +787,26 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     else if (*it == "-unpack_ext_w_tag") flags.unpack_ext_w_tag = false;
     else if (*it == "+pack_other_as_nil") flags.pack_other_as_nil = true;
     else if (*it == "-pack_other_as_nil") flags.pack_other_as_nil = false;
+    else if (it->length() > 12 && it->substr(1, 11) == "unpack_nil_") {
+      string remainder = it->substr(12, it->length() - 12);
+      if (remainder == "zero") flags.unpack_nil = UNPACK_NIL_ZERO;
+      else if (remainder == "NaN") flags.unpack_nil = UNPACK_NIL_NAN;
+      else if (remainder == "empty") flags.unpack_nil = UNPACK_NIL_EMPTY;
+      else if (remainder == "cell") flags.unpack_nil = UNPACK_NIL_CELL;
+      else if (*it == "+unpack_nil_array_skip") flags.unpack_nil_array_skip = true;
+      else if (*it == "-unpack_nil_array_skip") flags.unpack_nil_array_skip = false;
+    }
     else mexErrMsgIdAndTxt("msgpack:invalid_flag", "%s is not a valid flag.", it->c_str());
   }
   // Handle command
-  if (cmd == "setflags") {
+  if (cmd == "set_flags") {
     // flags already processed above
+    return;
+  } else if (cmd == "reset_flags") {
+    flags = mp_flags();
+    return;
+  } else if (cmd == "print_flags") {
+    print_flags();
     return;
   } else if (cmd == "pack")
     mex_pack(nlhs, plhs, nrhs-1, prhs+1);
@@ -765,9 +824,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
       "  unpack_narrow\n"
       "  unpack_ext_w_tag\n"
       "  pack_other_as_nil\n"
+      "  unpack_nil_array_skip\n"
+      "Also, +unpack_nil_ may be set as one of the following (no unset):\n"
+      "  +unpack_nil_zero (default)\n"
+      "  +unpack_nil_NaN\n"
+      "  +unpack_nil_empty\n"
+      "  +unpack_nil_cell\n"
       "\n");
   else
     mexErrMsgIdAndTxt("msgpack:bad_command",
                       "Unrecognized command %s. Try msgpack('help');", cmd.c_str());
 }
-

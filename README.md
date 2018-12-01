@@ -48,7 +48,7 @@ Flags may be set that affect this and future calls of `msgpack()` as follows:
 >> msgpack('<cmd> [<flag>[ <flag>[ ...]]]', ...)
 ```
 
-...where `<cmd>` may be simply `setflags` or one of the other commands followed by that command's
+...where `<cmd>` may be simply `set_flags` or one of the other commands followed by that command's
  arguments, and where each `<flag>` is one of the following, prefixed with `+` to set or `-` to
  unset:
 
@@ -88,4 +88,24 @@ Flags may be set that affect this and future calls of `msgpack()` as follows:
   * **Set** - If trying to pack a type for which there is no packer function, show a warning and
     pack NIL instead.
   * **Unset** - If trying to pack a type for which there is no packer function, throw an error.
+* `+unpack_nil_zero`, `+unpack_nil_NaN`, `+unpack_nil_empty`, `+unpack_nil_cell`
+  (Default is `unpack_nil_zero`)
+  * Rather than **set** and **unset**, there are multiple options for how to unpack NIL type.
+  * `zero` - Unpack to zero, (or false in logical arrays). Double if scalar, uint8 if all-nil array.
+  * `NaN` - Unpack to NaN. In otherwise integer or logical array forces a cell array.
+  * `empty` - Unpack to empty double array. In an array forces a cell array.
+  * `cell` - Unpack to empty cell array. In an array forces the array to a cell array.
+* `+unpack_nil_array_skip` or `-unpack_nil_skip` (default is **unset**)
+  * **Set** - If a `nil` is in an otherwise numeric or logical array, skip the `nil`. If all-nils,
+              return an empty array.
+  * **Unset** - Unpack `nil` as in `unpack_nil_...` above.
 
+To reset flags to defaults:
+```matlab
+msgpack('reset_flags');
+```
+
+To see the currently set flags
+```matlab
+msgpack('print_flags');
+```
