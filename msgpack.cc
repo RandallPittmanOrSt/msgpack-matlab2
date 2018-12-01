@@ -1,9 +1,9 @@
-/* 
+/*
  * MessagePack for Matlab
  *
  * Copyright [2013] [ Yida Zhang <yida@seas.upenn.edu> ]
  *              University of Pennsylvania
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -286,80 +287,222 @@ mxArray* mex_unpack_map(const msgpack_object& obj) {
 }
 
 mxArray* mex_unpack_array(const msgpack_object& obj) {
-  /* validata array element type */
-  int unique_numeric_type = -1;  // msgpack_object_type
-  bool one_numeric_type = true;
+  mxArray* ret = NULL;
+  // Short circuit--empty array returns [];
+  if (obj.via.array.size == 0) {
+    ret = mxCreateDoubleMatrix(0, 0, mxREAL);
+    return ret;
+  }
+  // Figure out if the array is all of one scalar type, (or one type with nils)
+  int unique_scalar_type = -1;  // msgpack_object_type
+  bool one_scalar_type = true;
   int this_type;
+  vector<bool> nils(obj.via.array.size, false);
   for (size_t i = 0; i < obj.via.array.size; i++) {
     this_type = obj.via.array.ptr[i].type;
-    if (unique_numeric_type > -1) { // At least one numeric type has been found
-      if (this_type > 0x00) { // Skip NIL types
-        if (this_type != unique_numeric_type) {
-          // Different type. Can't make an array.
-          one_numeric_type = false;
-          break;
-        }
+    if (this_type == 0x00) {
+        nils[i] = true;
+        continue;
+    }
+    if (unique_scalar_type > -1) { // At least one scalar type has been found
+      if (this_type != unique_scalar_type) {
+        // Different type. Can't make an array.
+        one_scalar_type = false;
+        break;
       }
     } else if (this_type > 0x00 && (this_type < 0x05 || this_type == 0x0a)) {
-      // Found a numeric type
-      unique_numeric_type = this_type;
+      // Found a scalar non-nil type
+      unique_scalar_type = this_type;
     } else {
-      // Non-numeric type. Can't make an array.
-      one_numeric_type = false;
+      // Non-scalar type. Can't make an array.
+      one_scalar_type = false;
       break;
     }
   }
-  if (one_numeric_type && unique_numeric_type > -1) {
-    mxArray *ret = NULL;
-    bool * ptrb = NULL;
-    double * ptrd = NULL;
-    float* ptrf = NULL;
-    int64_t * ptri = NULL;
-    uint64_t * ptru = NULL;
-    switch (unique_numeric_type) {
-      case MSGPACK_OBJECT_BOOLEAN: // 0x01
-        ret = mxCreateLogicalMatrix(1, obj.via.array.size);
-        ptrb = (bool*)mxGetData(ret);
-        for (size_t i = 0; i < obj.via.array.size; i++) ptrb[i] = obj.via.array.ptr[i].via.boolean;
-        break;
-      case MSGPACK_OBJECT_POSITIVE_INTEGER: // 0x02
-        ret = mxCreateNumericMatrix(1, obj.via.array.size, mxUINT64_CLASS, mxREAL);
-        ptru = (uint64_t*)mxGetData(ret);
-        for (size_t i = 0; i < obj.via.array.size; i++) ptru[i] = obj.via.array.ptr[i].via.u64;
-        break;
-      case MSGPACK_OBJECT_NEGATIVE_INTEGER: // 0x03
-        ret = mxCreateNumericMatrix(1, obj.via.array.size, mxINT64_CLASS, mxREAL);
-        ptri = (int64_t*)mxGetData(ret);
-        for (size_t i = 0; i < obj.via.array.size; i++) ptri[i] = obj.via.array.ptr[i].via.i64;
-        break;
-      case MSGPACK_OBJECT_FLOAT64: // 0x04
+  bool all_nils = (unique_scalar_type == -1);
+  bool any_nils = std::any_of(nils.begin(), nils.end(), [](bool v) {return v;});
+  // mexPrintf("unique_scalar_type: %d, one_scalar_type: %d, all_nils: %d, any_nils: %d\n",
+  //           unique_scalar_type, one_scalar_type, all_nils, any_nils);
+
+  // Single-type array if...
+  // - All scalar of same type and no nills
+  // - All scalar of same type and skip nil
+  // - All scalar of same type and nil-->zero
+  // - All scalar of float/double type and nil-->NaN
+  // - All nil and (nil-->Nan or nil-->zero)
+  // ...otherwise cell array
+  if ((one_scalar_type &&
+       (!any_nils ||
+        flags.unpack_nil_array_skip ||
+        flags.unpack_nil == UNPACK_NIL_ZERO ||
+        (flags.unpack_nil == UNPACK_NIL_NAN && (unique_scalar_type == 0x04 ||
+                                                unique_scalar_type == 0x0a)))) ||
+      (all_nils && (flags.unpack_nil == UNPACK_NIL_NAN || flags.unpack_nil == UNPACK_NIL_ZERO))){
+    // Unpack to single-type MATLAB array
+    // First handle the three all-nil cases.
+    if (all_nils) {
+      if (flags.unpack_nil_array_skip) {
+        ret = mxCreateNumericMatrix(0, 0, mxDOUBLE_CLASS, mxREAL);
+      } else if (flags.unpack_nil == UNPACK_NIL_ZERO) {
+        ret = mxCreateNumericMatrix(1, obj.via.array.size, mxUINT8_CLASS, mxREAL);
+      } else {
         ret = mxCreateNumericMatrix(1, obj.via.array.size, mxDOUBLE_CLASS, mxREAL);
-        ptrd = mxGetPr(ret);
-        for (size_t i = 0; i < obj.via.array.size; i++) ptrd[i] = obj.via.array.ptr[i].via.f64;
-        break;
-      case MSGPACK_OBJECT_FLOAT32: // 0x0a
-        ret = mxCreateNumericMatrix(1, obj.via.array.size, mxSINGLE_CLASS, mxREAL);
-        ptrf = (float*)mxGetData(ret);
-        for (size_t i = 0; i < obj.via.array.size; i++) ptrf[i] = (float)obj.via.array.ptr[i].via.f64;
-        break;
-      default:
-        break;
+        double* ptr = mxGetPr(ret);
+        for (size_t i = 0; i < obj.via.array.size; i++) ptr[i] = mxGetNaN();
+      }
+    } else {
+      // Ok, there are between 0 and n-1 nils. Create the arrays.
+      size_t nskip = 0;
+      if (any_nils && flags.unpack_nil_array_skip) {
+        nskip = std::count_if(nils.begin(), nils.end(), [](bool v) {return v;});
+      }
+      bool* ptrb = NULL;
+      uint64_t* ptru = NULL;
+      int64_t* ptri = NULL;
+      float* ptrf = NULL;
+      double* ptrd = NULL;
+      switch (unique_scalar_type) {
+        case MSGPACK_OBJECT_BOOLEAN:
+          ret = mxCreateLogicalMatrix(1, obj.via.array.size - nskip);
+          ptrb = (bool*)mxGetData(ret);
+          if (!any_nils) {
+            // No nils, copy in bool values.
+            for (size_t i = 0; i < obj.via.array.size; i++)
+              ptrb[i] = obj.via.array.ptr[i].via.boolean;
+          } else {
+            if (flags.unpack_nil_array_skip) {
+              // Some nils, skip them
+              size_t ptr_i = 0;
+              for (size_t obj_i = 0; obj_i < obj.via.array.size; obj_i++) {
+                if (nils[obj_i]) continue;
+                else ptrb[ptr_i++] = obj.via.array.ptr[obj_i].via.boolean; // incr ptr_i after use
+              }
+            } else {
+              // some nils, set them false.
+              for (size_t i = 0; i < obj.via.array.size; i++) {
+                if (nils[i]) ptrb[i] = false;
+                else ptrb[i] = obj.via.array.ptr[i].via.boolean;
+              }
+            }
+          }
+          break;
+        case MSGPACK_OBJECT_POSITIVE_INTEGER:
+          ret = mxCreateNumericMatrix(1, obj.via.array.size - nskip, mxUINT64_CLASS, mxREAL);
+          ptru = (uint64_t*)mxGetData(ret);
+          if (!any_nils) {
+            // no nils, copy in uints
+            for (size_t i = 0; i < obj.via.array.size; i++)
+              ptru[i] = obj.via.array.ptr[i].via.u64;
+          } else {
+            if (flags.unpack_nil_array_skip) {
+              // Some nils, skip them
+              size_t ptr_i = 0;
+              for (size_t obj_i = 0; obj_i < obj.via.array.size; obj_i++) {
+                if (nils[obj_i]) continue;
+                else ptru[ptr_i++] = obj.via.array.ptr[obj_i].via.u64; // incr ptr_i after use
+              }
+            } else {
+              // some nils, set them to zero
+              for (size_t i = 0; i < obj.via.array.size; i++) {
+                if (nils[i]) ptru[i] = 0;
+                else ptru[i] = obj.via.array.ptr[i].via.u64;
+              }
+            }
+          }
+          break;
+        case MSGPACK_OBJECT_NEGATIVE_INTEGER:
+          ret = mxCreateNumericMatrix(1, obj.via.array.size - nskip, mxINT64_CLASS, mxREAL);
+          ptri = (int64_t*)mxGetData(ret);
+          if (!any_nils) {
+            // no nils, copy in ints
+            for (size_t i = 0; i < obj.via.array.size; i++)
+              ptri[i] = obj.via.array.ptr[i].via.i64;
+          } else {
+            if (flags.unpack_nil_array_skip) {
+              // Some nils, skip them
+              size_t ptr_i = 0;
+              for (size_t obj_i = 0; obj_i < obj.via.array.size; obj_i++) {
+                if (nils[obj_i]) continue;
+                else ptri[ptr_i++] = obj.via.array.ptr[obj_i].via.i64; // incr ptr_i after use
+              }
+            } else {
+              // some nils, set them to zero
+              for (size_t i = 0; i < obj.via.array.size; i++) {
+                if (nils[i]) ptri[i] = 0;
+                else ptri[i] = obj.via.array.ptr[i].via.i64;
+              }
+            }
+          }
+          break;
+        case MSGPACK_OBJECT_FLOAT32:
+          ret = mxCreateNumericMatrix(1, obj.via.array.size - nskip, mxSINGLE_CLASS, mxREAL);
+          ptrf = (float*)mxGetData(ret);
+          if (!any_nils) {
+            // no nils, copy in vals
+            for (size_t i = 0; i < obj.via.array.size; i++)
+              ptrf[i] = (float)obj.via.array.ptr[i].via.f64;
+          } else {
+            if (flags.unpack_nil_array_skip) {
+              // Some nils, skip them
+              size_t ptr_i = 0;
+              for (size_t obj_i = 0; obj_i < obj.via.array.size; obj_i++) {
+                if (nils[obj_i]) continue;
+                else ptrf[ptr_i++] = (float)obj.via.array.ptr[obj_i].via.f64; // incr ptr_i after use
+              }
+            } else {
+              // some nils, set them to zero or NaN.
+              float nil_val = (flags.unpack_nil == UNPACK_NIL_NAN) ? mxGetNaN() : 0;
+              for (size_t i = 0; i < obj.via.array.size; i++) {
+                if (nils[i]) ptrf[i] = nil_val;
+                else ptrf[i] = (float)obj.via.array.ptr[i].via.f64;
+              }
+            }
+          }
+          break;
+        case MSGPACK_OBJECT_FLOAT64:
+          ret = mxCreateNumericMatrix(1, obj.via.array.size - nskip, mxDOUBLE_CLASS, mxREAL);
+          ptrd = mxGetPr(ret);
+          if (!any_nils) {
+            // no nils, copy in vals
+            for (size_t i = 0; i < obj.via.array.size; i++)
+              ptrd[i] = obj.via.array.ptr[i].via.f64;
+          } else {
+            if (flags.unpack_nil_array_skip) {
+              // Some nils, skip them
+              size_t ptr_i = 0;
+              for (size_t obj_i = 0; obj_i < obj.via.array.size; obj_i++) {
+                if (nils[obj_i]) continue;
+                else ptrd[ptr_i++] = obj.via.array.ptr[obj_i].via.f64; // incr ptr_i after use
+              }
+            } else {
+              // some nils, set them to zero or NaN.
+              double nil_val = (flags.unpack_nil == UNPACK_NIL_NAN) ? mxGetNaN() : 0;
+              for (size_t i = 0; i < obj.via.array.size; i++) {
+                if (nils[i]) ptrd[i] = nil_val;
+                else ptrd[i] = obj.via.array.ptr[i].via.f64;
+              }
+            }
+          }
+          break;
+        default:
+         mexErrMsgIdAndTxt("msgpack:invalid_object_type",
+                           "Shouldn't get here. Object type is %d", unique_scalar_type);
+      }
     }
-    return ret;
-  }
-  else {  // multiple types or complex type (str, array, map, bin, ext)
-    mxArray *ret = mxCreateCellMatrix(1, obj.via.array.size);
+  } else {
+    // Unpack to cell array
+    ret = mxCreateCellMatrix(1, obj.via.array.size);
     for (size_t i = 0; i < obj.via.array.size; i++) {
       msgpack_object ob = obj.via.array.ptr[i];
       mxSetCell(ret, i, unpack_obj(ob));
     }
-    return ret;
   }
+  return ret;
 }
 
 mxArray* mex_unpack_bin(const msgpack_object& obj){
   mxArray* ret = mxCreateNumericMatrix(1, obj.via.bin.size, mxUINT8_CLASS, mxREAL);
-  uint8_t *ptr = (uint8_t*)mxGetData(ret); 
+  uint8_t *ptr = (uint8_t*)mxGetData(ret);
   memcpy(ptr, obj.via.bin.ptr, obj.via.bin.size * sizeof(uint8_t));
   return ret;
 }
@@ -378,14 +521,14 @@ mxArray* mex_unpack_ext(const msgpack_object& obj){
   }
   mxArray* exttype = mxCreateDoubleScalar(obj.via.ext.type);
   mxArray* data = mxCreateNumericMatrix(1, obj.via.ext.size, mxUINT8_CLASS, mxREAL);
-  uint8_t *ptr = (uint8_t*)mxGetData(data); 
+  uint8_t *ptr = (uint8_t*)mxGetData(data);
   memcpy(ptr, obj.via.ext.ptr, obj.via.ext.size * sizeof(uint8_t));
   mxSetCell(ret, type_cell, exttype);
   mxSetCell(ret, data_cell, data);
   return ret;
 }
 
-void mex_unpack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) 
+void mex_unpack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
   const char *str = (const char*)mxGetData(prhs[0]);
   int size = mxGetM(prhs[0]) * mxGetN(prhs[0]);
@@ -393,7 +536,7 @@ void mex_unpack(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
   /* deserializes it. */
   msgpack_unpacked msg;
   msgpack_unpacked_init(&msg);
-  if (!msgpack_unpack_next(&msg, str, size, NULL)) 
+  if (!msgpack_unpack_next(&msg, str, size, NULL))
     mexErrMsgTxt("unpack error");
 
   /* prints the deserialized object. */
@@ -671,7 +814,7 @@ void mex_unpacker(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     msgpack_unpacker_reserve_buffer(&pac, size);
     memcpy(msgpack_unpacker_buffer(&pac), str, size);
     msgpack_unpacker_buffer_consumed(&pac, size);
-  
+
     /* start streaming deserialization */
     msgpack_unpacked msg;
     msgpack_unpacked_init(&msg);
@@ -702,7 +845,7 @@ void mex_unpacker_std(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]
     msgpack_unpacker_reserve_buffer(&pac, size);
     memcpy(msgpack_unpacker_buffer(&pac), str, size);
     msgpack_unpacker_buffer_consumed(&pac, size);
-  
+
     /* start streaming deserialization */
     msgpack_unpacked msg;
     msgpack_unpacked_init(&msg);
