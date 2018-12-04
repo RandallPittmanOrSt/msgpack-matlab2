@@ -1,10 +1,18 @@
 # MessagePack for Matlab 
 Forked from [msgpack-matlab by yida](https://github.com/yida/msgpack-matlab).
 
+## Purpose
+To provide a MEX interface to the msgpack-c library (https://github.com/msgpack/msgpack-c) that supports [the modern MessagePack specification](https://github.com/msgpack/msgpack/blob/master/spec.md).
+
+**yida/msgpack-matlab** provided an excellent foundation for this project, but was lacking in the following areas:
+- Only supported legacy MessagePack (see msgpack/msgpack/spec-old.md) (no BIN or EXT types, non-unicode RAW/STR)
+- Raw/String support did not handle non-ascii bytes well.
+- 
+
 MEX bindings for msgpack-c (https://github.com/msgpack/msgpack-c)
 
 Requires:
-* msgpack-c development library > 1.1
+* msgpack-c development library > 1.1.0 (for unpacking FLOAT32 to single need msgpack-c > 2.1.0)
 
 install: 
 
