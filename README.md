@@ -1,4 +1,5 @@
-# MessagePack for Matlab 
+# MessagePack for MATLAB - MEX bindings for msgpack-c supporting the modern MessagePack standard
+
 Forked from [msgpack-matlab by yida](https://github.com/yida/msgpack-matlab).
 
 ## Purpose
