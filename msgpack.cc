@@ -266,8 +266,8 @@ mxArray* mex_unpack_map(const msgpack_object& obj) {
   } else {
     // unpack as cells.
     ret = mxCreateCellMatrix(2, nfields);
-    size_t key_subs[] = {0, 0};
-    size_t val_subs[] = {1, 0};
+    mwIndex key_subs[] = {0, 0};
+    mwIndex val_subs[] = {1, 0};
     size_t key_i, val_i;
     key_i = val_i = 0;
     msgpack_object * key = NULL;
