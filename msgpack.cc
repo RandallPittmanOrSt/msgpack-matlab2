@@ -194,9 +194,14 @@ mxArray* mex_unpack_double(const msgpack_object& obj) {
 
 mxArray* mex_unpack_str(const msgpack_object& obj) {
   mxArray *ret;
-    mxArray* data = mxCreateNumericMatrix(1, obj.via.str.size, mxUINT8_CLASS, mxREAL);
-    uint8_t *ptr = (uint8_t*)mxGetData(data);
-    memcpy(ptr, obj.via.str.ptr, obj.via.str.size * sizeof(uint8_t));
+  if (obj.via.str.size == 0) {
+    mwSize dims[2] = {0, 0};
+    ret = mxCreateCharArray(2, dims);
+    return ret;
+  }
+  mxArray* data = mxCreateNumericMatrix(1, obj.via.str.size, mxUINT8_CLASS, mxREAL);
+  uint8_t *ptr = (uint8_t*)mxGetData(data);
+  memcpy(ptr, obj.via.str.ptr, obj.via.str.size * sizeof(uint8_t));
   if (flags.unicode_strs) {
     // Definitely UTF-8. Convert.
     mxArray* args[] = {data, mxCreateString("UTF-8")};
